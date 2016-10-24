@@ -9,40 +9,32 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Model_Grid_Type_Sitemap
-    extends BL_CustomGrid_Model_Grid_Type_Abstract
+class BL_CustomGrid_Model_Grid_Type_Sitemap extends BL_CustomGrid_Model_Grid_Type_Abstract
 {
-    public function isAppliableToGrid($type, $rewritingClassName)
+    protected function _getSupportedBlockTypes()
     {
-        return ($type == 'adminhtml/sitemap_grid');
+        return array('adminhtml/sitemap_grid');
     }
     
-    public function checkUserEditPermissions($type, $model, $block=null, $params=array())
+    protected function _getBaseEditableFields($blockType)
     {
-        if (parent::checkUserEditPermissions($type, $model, $block, $params)) {
-            return Mage::getSingleton('admin/session')->isAllowed('catalog/sitemap');
-        }
-        return false;
-    }
-    
-    protected function _getBaseEditableFields($type)
-    {
-        $helper = Mage::helper('sitemap');
+        /** @var $helper Mage_Adminhtml_Helper_Data */
+        $helper = Mage::helper('adminhtml');
         
         $fields = array(
             'sitemap_filename' => array(
                 'type'      => 'text',
                 'required'  => true,
-                'form_note' => Mage::helper('adminhtml')->__('example: sitemap.xml'),
+                'form_note' => $helper->__('example: sitemap.xml'),
             ),
             'sitemap_path' => array(
                 'type'      => 'text',
                 'required'  => true,
-                'form_note' => Mage::helper('adminhtml')->__('example: "sitemap/" or "/" for base path (path must be writeable)'),
+                'form_note' => $helper->__('example: "sitemap/" or "/" for base path (path must be writeable)'),
             ),
         );
         
@@ -50,36 +42,91 @@ class BL_CustomGrid_Model_Grid_Type_Sitemap
             $fields['store_id'] = array(
                 'type'        => 'select',
                 'required'    => true,
-                'form_values' => Mage::getSingleton('adminhtml/system_store')->getStoreValuesForForm(),
+                'form_values' => $this->_getEditorHelper()->getStoreValuesForForm(false, false),
             );
         }
         
         return $fields;
     }
     
-    protected function _getEntityRowIdentifiersKeys($type)
+    protected function _getEntityRowIdentifiersKeys($blockType)
     {
         return array('sitemap_id');
     }
     
-    protected function _loadEditedEntity($type, $config, $params)
+    protected function _loadEditedEntity($blockType, BL_CustomGrid_Object $config, array $params, $entityId)
     {
-        if (isset($params['ids']['sitemap_id'])) {
-            return Mage::getModel('sitemap/sitemap')->load($params['ids']['sitemap_id']);
-        }
-        return null;
+        /** @var $sitemap Mage_Sitemap_Model_Sitemap */
+        $sitemap = Mage::getModel('sitemap/sitemap');
+        $sitemap->load($entityId);
+        return $sitemap;
     }
     
-    protected function _beforeApplyEditedFieldValue($type, $config, $params, $entity, &$value)
+    protected function _getEditRequiredAclPermissions($blockType)
     {
-        if (Mage::helper('customgrid')->isMageVersionGreaterThan(1, 5, 0)
-            && in_array($config['id'], array('sitemap_filename', 'sitemap_path'))) {
-            $fileName = ($config['id'] == 'sitemap_filename' ? $entity->getSitemapFilename() : $value);
-            $path     = ($config['id'] == 'sitemap_path' ? $entity->getSitemapPath() : $value);
+        return 'catalog/sitemap';
+    }
+    
+    /**
+     * Return the usable file name for the given edited sitemap
+     * 
+     * @param BL_CustomGrid_Object $config Edited field config
+     * @param Mage_Sitemap_Model_Sitemap $sitemap Edited sitemap
+     * @param mixed $value Edited field value
+     * @return string
+     */
+    protected function _getEditedSitemapFileName(BL_CustomGrid_Object $config, $sitemap, $value)
+    {
+        /** @var $sitemap Mage_Sitemap_Model_Sitemap */
+        return ($config->getValueId() != 'sitemap_filename' ? $sitemap->getSitemapFilename() : $value);
+    }
+    
+    /**
+     * Return the usable path for the given edited sitemap
+     * 
+     * @param BL_CustomGrid_Object $config Edited field config
+     * @param Mage_Sitemap_Model_Sitemap $sitemap Edited sitemap
+     * @param mixed $value Edited field value
+     * @return string
+     */
+    protected function _getEditedSitemapPath(BL_CustomGrid_Object $config, $sitemap, $value)
+    {
+        /** @var $sitemap Mage_Sitemap_Model_Sitemap */
+        return ($config->getValueId() != 'sitemap_path' ? $sitemap->getSitemapPath() : $value);
+    }
+    
+    /**
+     * Delete the file for the given edited sitemap
+     * 
+     * @param Mage_Catalog_Model_Sitemap $sitemap Edited sitemap
+     * @return BL_CustomGrid_Model_Grid_Type_Sitemap
+     */
+    protected function _deleteEditedSitemapFile($sitemap)
+    {
+        /** @var $sitemap Mage_Sitemap_Model_Sitemap */
+        if ($sitemap->getSitemapFilename() && file_exists($sitemap->getPreparedFilename())) {
+            unlink($sitemap->getPreparedFilename());
+        }
+        return $this;
+    }
+    
+    protected function _beforeApplyEditedFieldValue(
+        $blockType,
+        BL_CustomGrid_Object $config,
+        array $params,
+        $entity,
+        &$value
+    ) {
+        if ($this->getBaseHelper()->isMageVersionGreaterThan(1, 5, 0)
+            && in_array($config->getValueId(), array('sitemap_filename', 'sitemap_path'))) {
+            $fileName = $this->_getEditedSitemapFileName($config, $entity, $value);
+            $path = $this->_getEditedSitemapPath($config, $entity, $value);
             
             if (!empty($fileName) && !empty($path)) {
+                /** @var $helper Mage_Adminhtml_Helper_Catalog */
+                $helper = Mage::helper('adminhtml/catalog');
                 $resultPath = rtrim($path, '\\/') . DS . $fileName;
-                $helper     = Mage::helper('adminhtml/catalog');
+                /** @var $validator Mage_Core_Model_File_Validator_AvailablePath */
                 $validator  = Mage::getModel('core/file_validator_availablePath');
                 $validator->setPaths($helper->getSitemapValidPaths());
                 
@@ -89,12 +136,13 @@ class BL_CustomGrid_Model_Grid_Type_Sitemap
             }
         }
         
-        if (Mage::helper('customgrid/config_editor')->getSitemapDeleteFile()
-            && $entity->getSitemapFilename()
-            && file_exists($entity->getPreparedFilename())) {
-            unlink($entity->getPreparedFilename());
+        /** @var $configHelper BL_CustomGrid_Helper_Config_Editor */
+        $configHelper = Mage::helper('customgrid/config_editor');
+        
+        if ($configHelper->getSitemapDeleteFile()) {
+            $this->_deleteEditedSitemapFile($entity);
         }
         
-        return parent::_beforeApplyEditedFieldValue($type, $config, $params, $entity, $value);
+        return parent::_beforeApplyEditedFieldValue($blockType, $config, $params, $entity, $value);
     }
 }

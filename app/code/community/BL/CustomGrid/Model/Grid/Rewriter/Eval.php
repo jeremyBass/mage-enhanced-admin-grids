@@ -9,13 +9,17 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2014 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Model_Grid_Rewriter_Eval
-    extends BL_CustomGrid_Model_Grid_Rewriter_Abstract
+class BL_CustomGrid_Model_Grid_Rewriter_Eval extends BL_CustomGrid_Model_Grid_Rewriter_Abstract
 {
+    /**
+     * Return whether eval() is disabled on the server
+     * 
+     * @return bool
+     */
     protected function _isEvalDisabled()
     {
         if (extension_loaded('suhosin')) {
@@ -25,17 +29,22 @@ class BL_CustomGrid_Model_Grid_Rewriter_Eval
         return false;
     }
     
-    protected function _rewriteGrid($blcgClass, $originalClass, $gridType)
+    protected function _rewriteGrid($blcgClassName, $originalClassName, $blockType)
     {
+        /** @var $helper BL_CustomGrid_Helper_Data */
+        $helper = Mage::helper('customgrid');
+        
         if (!$this->_isEvalDisabled()) {
             try {
-                eval($this->_getRewriteCode($blcgClass, $originalClass, $gridType));
+                eval($this->_getRewriteCode($blcgClassName, $originalClassName, $blockType));
             } catch (Exception $e) {
-                Mage::throwException(Mage::helper('customgrid')->__('An error occured while eval()ing the rewrite code : "%s"', $e->getMessage()));
+                $error = 'An error occurred while eval()ing the rewrite code : "%s"';
+                Mage::throwException($helper->__($error, $e->getMessage()));
             }
         } else {
-            Mage::throwException(Mage::helper('customgrid')->__('eval() is not available on your server'));
+            Mage::throwException($helper->__('eval() is not available on your server'));
         }
+        
         return $this;
     }
 }

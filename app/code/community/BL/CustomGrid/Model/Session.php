@@ -9,24 +9,28 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2014 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Model_Session
-    extends Mage_Core_Model_Session_Abstract
+class BL_CustomGrid_Model_Session extends Mage_Core_Model_Session_Abstract
 {
     protected $_now;
     
-    protected function _construct()
+    public function __construct()
     {
-        parent::_construct();
+        $this->init('customgrid');
         $this->_now = date('Y-m-d H:i:s');
     }
     
     public function addMessage(Mage_Core_Model_Message_Abstract $message)
     {
-        $message->setIdentifier(uniqid().'|'.$this->_now);
+        $message->setIdentifier(uniqid() . '|' . $this->_now);
         return parent::addMessage($message);
+    }
+    
+    public function hasMessages()
+    {
+        return ($this->getMessages()->count() > 0);
     }
 }

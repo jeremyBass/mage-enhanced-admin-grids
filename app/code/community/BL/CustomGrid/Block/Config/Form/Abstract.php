@@ -34,155 +34,273 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-abstract class BL_CustomGrid_Block_Config_Form_Abstract
-    extends Mage_Adminhtml_Block_Widget_Form
+abstract class BL_CustomGrid_Block_Config_Form_Abstract extends BL_CustomGrid_Block_Widget_Form
 {
-    protected $_defaultElementType = 'text';
-    protected $_translationHelper  = null;
+    /**
+     * Return the form ID
+     * 
+     * @return string
+     */
+    abstract public function getFormId();
     
-    abstract protected function _getFormId();
+    /**
+     * Return the form code
+     * 
+     * @return string
+     */
     abstract protected function _getFormCode();
-    abstract public function addConfigFields($fieldset);
+    
+    /**
+     * Return the form action
+     * 
+     * @return string
+     */
+    abstract protected function _getFormAction();
+    
+    /**
+     * Return the fields to add to the form
+     * 
+     * @return BL_CustomGrid_Object[]
+     */
+    abstract protected function _getFormFields();
+    
+    protected function _prepareLayout()
+    {
+        parent::_prepareLayout();
+        
+        /** @var $fieldsetRenderer BL_CustomGrid_Block_Widget_Form_Renderer_Fieldset */
+        $fieldsetRenderer = $this->getLayout()->createBlock('customgrid/widget_form_renderer_fieldset');
+        Varien_Data_Form::setFieldsetRenderer($fieldsetRenderer);
+        
+        return $this;
+    }
     
     protected function _prepareForm()
     {
-        $form = new Varien_Data_Form();
-        $fieldsetHtmlId = 'options_fieldset' . md5($this->_getFormCode());
-        $this->setFieldsetHtmlId($fieldsetHtmlId);
+        $helper = $this->getTranslationHelper();
         
-        $fieldset = $form->addFieldset($fieldsetHtmlId, array('legend' => $this->__('Configuration')));
-        /*
-        Use an own renderer for multiselect fields to prevent a bug between
-        Prototype JS / Form.serializeElements() (imploding the values) and
-        Varien_Data_Form_Element_Multiselect (generating an array parameter),
-        leading to obtain an array with a single value containing the expected imploded values
-        */
-        $fieldset->addType('multiselect', 'BL_CustomGrid_Block_Config_Form_Element_Multiselect');
-        
-        $form->setUseContainer(true);
-        $form->setId($this->_getFormId());
-        $form->setMethod('post');
-        $form->setAction($this->getUrl('*/*/buildConfig'));
-        $this->setForm($form);
-        
-        // Add dependence javascript block
-        $block = $this->getLayout()->createBlock('customgrid/widget_form_element_dependence');
-        $this->setChild('form_after', $block);
-        
-        $this->addConfigFields($fieldset);
-    }
-    
-    protected function _addConfigField($fieldset, $parameter)
-    {
-        $form = $this->getForm();
-        
-        // Prepare element data with values (either from request of from default values)
-        $fieldName = $parameter->getKey();
-        
-        $data = array(
-            'name'     => $form->addSuffixToName($fieldName, 'parameters'),
-            'label'    => $parameter->getLabel(),
-            'required' => $parameter->getRequired(),
-            'class'    => 'renderer-option',
-            'note'     => $parameter->getDescription(),
+        $form = new Varien_Data_Form(
+            array(
+                'id'     => $this->getFormId(),
+                'action' => $this->_getFormAction(),
+                'method' => 'post',
+                'use_container' => true,
+            )
         );
         
-        // Only translate if needed
-        if (!is_null($this->_translationHelper)) {
-            $data['label'] = $this->_translationHelper->__($data['label']);
-            $data['note']  = $this->_translationHelper->__($data['note']);
+        $this->setForm($form);
+        $formCode  = $this->_getFormCode();
+        $fieldsets = array();
+        $fields = $this->_getFormFields();
+        
+        foreach ($fields as $field) {
+            if ($fieldsetLabel = $field->getGroup()) {
+                $fieldsetLabel = $helper->__($fieldsetLabel);
+            } else {
+                $fieldsetLabel = $this->__('General');
+            }
+            
+            $fieldsetKey = md5($formCode . $fieldsetLabel);
+            
+            if (!isset($fieldsets[$fieldsetKey])) {
+                $fieldsetId = 'blcg_config_form_fieldset_' . $fieldsetKey;
+                $fieldsets[$fieldsetKey] = $form->addFieldset($fieldsetId, array('legend' => $fieldsetLabel));
+                /*
+                Use an own renderer for multiselect fields to prevent a bug between
+                Prototype JS / Form.serializeElements() (imploding the values)
+                and Varien_Data_Form_Element_Multiselect (generating an array parameter),
+                leading to obtain an array with a single value containing the expected imploded values
+                */
+                $fieldsets[$fieldsetKey]->addType('multiselect', 'BL_CustomGrid_Block_Config_Form_Element_Multiselect');
+            }
+            
+            $this->_addField($fieldsets[$fieldsetKey], $field);
         }
         
-        if ($values = $this->getConfigParams()) {
-            $data['value'] = (isset($values[$fieldName]) ? $values[$fieldName] : '');
+        return $this;
+    }
+    
+    /**
+     * Return the default value for the given field
+     * 
+     * @param Varien_Object $field Field object
+     * @return mixed
+     */
+    protected function _getFieldDefaultValue(Varien_Object $field)
+    {
+        $fieldName = $field->getKey();
+        
+        if (is_array($values = $this->getConfigValues()) && isset($values[$fieldName])) {
+            $value = $values[$fieldName];
         } else {
-            $data['value'] = $parameter->getValue();
+            $value = $field->getValue();
             
-            // Prepare unique ID value
-            if (($fieldName == 'unique_id') && ($data['value'] == '')) {
-                $data['value'] = md5(microtime(true));
+            if (($fieldName == 'unique_id') && ($value == '')) {
+                $value = md5(microtime(true));
             }
         }
         
-        // Prepare element dropdown values
-        if ($values  = $parameter->getValues()) {
-            // Dropdown options are specified in configuration
-            $data['values'] = array();
-            
-            foreach ($values as $option) {
-                if (!is_null($this->_translationHelper)) {
-                    $option['label'] = $this->_translationHelper->__($option['label']);
+        return $value;
+    }
+    
+    /**
+     * Return the source values for the given field
+     * 
+     * @param Varien_Object $field Field object
+     * @return array
+     */
+    protected function _getFieldValues(Varien_Object $field)
+    {
+        $helper = $this->getTranslationHelper();
+        $values = array();
+        
+        if ($sourceModel = $field->getSourceModel()) {
+            try {
+                if (is_array($sourceModel)) {
+                    $values = call_user_func(array(Mage::getModel($sourceModel['model']), $sourceModel['method']));
+                } else {
+                    $values = Mage::getModel($sourceModel)->toOptionArray();
                 }
-                $data['values'][] = array(
-                    'label' => $option['label'],
-                    'value' => $option['value']
+            } catch (Exception $e) {
+                Mage::logException($e);
+                $values = array();
+            }
+        } elseif (is_array($fieldValues = $field->getValues())) {
+            foreach ($fieldValues as $value) {
+                $values[] = array(
+                    'label' => $helper->__($value['label']),
+                    'value' => $value['value']
                 );
             }
-        } elseif ($sourceModel = $parameter->getSourceModel()) {
-            // Otherwise, a source model is specified
-            if (is_array($sourceModel)) {
-                // @todo check if invalid model / method ?
-                $data['values'] = call_user_func(array(Mage::getModel($sourceModel['model']), $sourceModel['method']));
-            } else {
-                $data['values'] = Mage::getModel($sourceModel)->toOptionArray();
+        }
+        
+        return $values;
+    }
+    
+    /**
+     * Returne the type and renderer for the given field
+     * 
+     * @param Varien_Object $field Field object
+     * @return array Type (string) and renderer (Mage_Core_Block_Abstract|null)
+     */
+    protected function _getFieldTypeAndRenderer(Varien_Object $field)
+    {
+        $fieldType = $field->getType();
+        $fieldRenderer = null;
+        
+        if (!$field->getVisible()) {
+            $fieldType = 'hidden';
+        } elseif (strpos($fieldType, '/') !== false) {
+            $fieldType = 'text';
+            $fieldRenderer = $this->getLayout()->createBlock($fieldType);
+        }
+        
+        return array($fieldType, $fieldRenderer);
+    }
+    
+    /**
+     * Apply the given helper block to the given form field
+     * 
+     * @param Varien_Object $helperBlock Helper block
+     * @param Varien_Data_Form_Element_Fieldset $fieldset Form fieldset
+     * @param Varien_Data_Form_Element_Abstract $formField Form field
+     * @return BL_CustomGrid_Block_Config_Form_Abstract
+     */
+    protected function _applyHelperBlockToFormField(
+        Varien_Object $helperBlock,
+        Varien_Data_Form_Element_Fieldset $fieldset,
+        Varien_Data_Form_Element_Abstract $formField
+    ) {
+        try {
+            $helperData  = $helperBlock->getData();
+            $helperBlock = $this->getLayout()->createBlock($helperBlock->getType(), '', $helperData);
+            
+            if ($helperBlock && method_exists($helperBlock, 'prepareElementHtml')) {
+                $helperBlock->setConfig($helperData)
+                    ->setFieldsetId($fieldset->getId())
+                    ->prepareElementHtml($formField);
+            }
+        } catch (Exception $e) {
+            Mage::logException($e);
+        }
+        return $this;
+    }
+    
+    /**
+     * Prepare the dependences for the given field
+     * 
+     * @param Varien_Object $field Field object
+     * @param string $formFieldId Form field ID
+     * @return BL_CustomGrid_Block_Config_Form_Abstract
+     */
+    protected function _prepareFieldDependences(Varien_Object $field, $formFieldId)
+    {
+        $dependenceBlock = $this->getDependenceBlock();
+        $fieldName = $field->getKey();
+        $dependenceBlock->addFieldMap($formFieldId, $fieldName);
+        
+        if (is_array($depends = $field->getDepends())) {
+            foreach ($depends as $fromFieldName => $fromValue) {
+                if (is_array($fromValue)) {
+                    if (isset($fromValue['value'])) {
+                        $fromValue = (string) $fromValue['value'];
+                    } elseif (isset($fromValue['values'])) {
+                        $fromValue = array_values($fromValue['values']);
+                    } else {
+                        $fromValue = array_values($fromValue);
+                    }
+                }
+                
+                $dependenceBlock->addFieldDependence($fieldName, $fromFieldName, $fromValue);
             }
         }
         
-        // Prepare field type or renderer
-        $fieldRenderer = null;
-        $fieldType = $parameter->getType();
+        return $this;
+    }
+    
+    /**
+     * Add the given field to the given form fieldset
+     * 
+     * @param Varien_Data_Form_Element_Fieldset $fieldset Form fieldset
+     * @param Varien_Object $field Field object
+     * @return Varien_Data_Form_Element_Abstract
+     */
+    protected function _addField(Varien_Data_Form_Element_Fieldset $fieldset, Varien_Object $field)
+    {
+        $form = $this->getForm();
+        $helper = $this->getTranslationHelper();
+        $fieldName = $field->getKey();
         
-        if (!$parameter->getVisible()) {
-            // Hidden element
-            $fieldType = 'hidden';
-        } elseif (false !== strpos($fieldType, '/')) {
-            // Just an element renderer
-            $fieldRenderer = $this->getLayout()->createBlock($fieldType);
-            $fieldType = $this->_defaultElementType;
-        }
+        // Base data
+        $fieldData = array(
+            'name'     => $form->addSuffixToName($fieldName, 'parameters'),
+            'label'    => $helper->__($field->getLabel()),
+            'note'     => $helper->__($field->getDescription()),
+            'required' => $field->getRequired(),
+            'class'    => 'renderer-option',
+            'value'    => $this->_getFieldDefaultValue($field),
+            'values'   => $this->_getFieldValues($field),
+        );
         
-        // @todo type-specific values whenever needed
-        
-        // Instantiate field
-        $field = $fieldset->addField($this->getFieldsetHtmlId().'_'.$fieldName, $fieldType, $data);
+        // Create and prepare form field
+        list($fieldType, $fieldRenderer) = $this->_getFieldTypeAndRenderer($field);
+        $formField = $fieldset->addField($this->getFieldsetHtmlId() . '_' . $fieldName, $fieldType, $fieldData);
         
         if ($fieldRenderer) {
-            $field->setRenderer($fieldRenderer);
+            $formField->setRenderer($fieldRenderer);
+        }
+        if (($fieldType == 'multiselect') && ($size = $field->getSize())) {
+            $formField->setSize($size);
+        }
+        if (($helperBlock = $field->getHelperBlock()) instanceof Varien_Object) {
+            $this->_applyHelperBlockToFormField($helperBlock, $fieldset, $formField);
         }
         
-        // Type-specific values that may be overriden if set before
-        if ($fieldType == 'multiselect') {
-            if ($size = $parameter->getSize()) {
-                $field->setSize($size);
-            }
-        }
-        
-        // Extra html preparations
-        if ($helper = $parameter->getHelperBlock()) {
-            $helperBlock = $this->getLayout()->createBlock($helper->getType(), '', $helper->getData());
-            
-            if ($helperBlock instanceof Varien_Object) {
-                $helperBlock->setConfig($helper->getData())
-                    ->setFieldsetId($fieldset->getId())
-                    ->prepareElementHtml($field);
-            }
-        }
-        
-        // Dependencies from other fields
-        $dependenceBlock = $this->getChild('form_after');
-        $dependenceBlock->addFieldMap($field->getId(), $fieldName);
-        
-        if ($parameter->getDepends()) {
-            foreach ($parameter->getDepends() as $from => $row) {
-                $values = isset($row['values']) ? array_values($row['values']) : (string)$row['value'];
-                $dependenceBlock->addFieldDependence($fieldName, $from, $values);
-            }
-        }
-        
-        return $field;
+        $this->_prepareFieldDependences($field, $formField->getId());
+        return $formField;
     }
 }

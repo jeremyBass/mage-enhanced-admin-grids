@@ -9,17 +9,14 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Model_System_Config_Source_Enableddisabled
+class BL_CustomGrid_Model_System_Config_Source_Enableddisabled extends BL_CustomGrid_Model_Source_Fixed
 {
-    public function toOptionArray()
-    {
-        return array(
-            array('value' => 1, 'label' => Mage::helper('customgrid')->__('Enabled')),
-            array('value' => 0, 'label' => Mage::helper('customgrid')->__('Disabled')),
-        );
-    }
+    protected $_optionHash = array(
+        1 => 'Enabled',
+        0 => 'Disabled',
+    );
 }

@@ -9,148 +9,216 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Block_Widget_Grid_Columns_Editor
-    extends Mage_Adminhtml_Block_Template
+class BL_CustomGrid_Block_Widget_Grid_Columns_Editor extends Mage_Adminhtml_Block_Template
 {
-    static protected $_instancesNumber = 0; 
-    protected $_instanceId = null;
-    
     protected function _construct()
     {
         parent::_construct();
-        $this->_instanceId = ++self::$_instancesNumber;
-        $this->setId(Mage::helper('core')->uniqHash('customGridEditor_'.$this->_instanceId));
+        $this->setId($this->getCoreHelper()->uniqHash('blcgEditor'));
         $this->setTemplate('bl/customgrid/widget/grid/columns/editor.phtml');
     }
     
-    public function getFormKey()
+    protected function _toHtml()
     {
-        return Mage::getSingleton('core/session')->getFormKey();
+        /** @var $helper BL_CustomGrid_Helper_Data */
+        $helper = $this->helper('customgrid');
+        
+        if (!$this->getIsNewGridModel()
+            && ($gridModel = $this->getGridModel())
+            && $gridModel->checkUserActionPermission(BL_CustomGrid_Model_Grid_Sentry::ACTION_EDIT_COLUMNS_VALUES)
+            && ($gridBlock = $this->getGridBlock())
+            && $helper->isRewritedGridBlock($gridBlock)) {
+            return parent::_toHtml();
+        }
+        
+        return '';
     }
     
+    /**
+     * Return the core helper
+     * 
+     * @return Mage_Core_Helper_Data
+     */
+    public function getCoreHelper()
+    {
+        return $this->helper('core');
+    }
+    
+    /**
+     * Return the current grid model
+     * 
+     * @return BL_CustomGrid_Model_Grid
+     */
+    public function getGridModel()
+    {
+        if (!$this->hasData('grid_model')) {
+            return $this->setData('grid_model', Mage::registry('blcg_grid'));
+        }
+        return $this->_getData('grid_model');
+    }
+    
+    /**
+     * Return the current grid block
+     * 
+     * @return Mage_Adminhtml_Block_Widget_Grid
+     */
+    public function getGridBlock()
+    {
+        return ($gridBlock = $this->_getData('grid_block'))
+            && ($gridBlock instanceof Mage_Adminhtml_Block_Widget_Grid)
+            ? $gridBlock
+            : null;
+    }
+    
+    /**
+     * Return the name of the editor JS object
+     * 
+     * @return string
+     */
     public function getJsObjectName()
     {
-        return $this->getId() . 'JsObject';
+        return $this->getId();
     }
     
+    /**
+     * Return the HTML ID of the grid table
+     * 
+     * @return string
+     */
     public function getGridTableId()
     {
-        return $this->getGridBlock()->getId().'_table';
+        return $this->getGridBlock()->getId() . '_table';
     }
     
+    /**
+     * Return the JSON config for the current grid rows
+     * 
+     * @return string
+     */
     public function getRowsJsonConfig()
     {
-        $config    = array();
+        $config = array();
         $gridBlock = $this->getGridBlock();
         $gridModel = $this->getGridModel();
+        $blockType = $gridModel->getBlockType();
+        $entityLoader = $gridModel->getTypeModel()
+            ->getEditor()
+            ->getEntityLoader();
         
-        if ($gridBlock->getCollection()) {
-            foreach ($gridBlock->getCollection() as $row) {
-                $config[] = $gridModel->getCollectionRowIdentifiers($row);
+        if ($gridCollection = $gridBlock->getCollection()) {
+            foreach ($gridCollection as $row) {
+                $config[] = $entityLoader->getEntityRowIdentifiers($blockType, $row);
                 
                 // Avoid taking non-consistent rows
                 if ($multipleRows = $gridBlock->getMultipleRows($row)) {
-                     foreach ($multipleRows as $multiple) {
-                         $config[] = false;
-                     }
-                 }
-                 if ($gridBlock->shouldRenderSubTotal($row)) {
-                     $config[] = false;
-                 }
+                    $rowsCount = count($multipleRows);
+                    
+                    for ($rowIndex = 0; $rowIndex < $rowsCount; $rowIndex++) {
+                        $config[] = false;
+                    }
+                }
                 
+                if ($gridBlock->shouldRenderSubTotal($row)) {
+                    $config[] = false;
+                }
             }
         }
         
-        return Mage::helper('core')->jsonEncode($config);
+        return $this->getCoreHelper()->jsonEncode($config);
     }
     
-    protected function _getBlockSortedColumns($block)
+    /**
+     * Return the sorted columns from the current grid block
+     * 
+     * @return Mage_Adminhtml_Block_Widget_Grid_Column[]
+     */
+    protected function _getGridBlockSortedColumns()
     {
-        // Get block columns, sort them if needed
-        $columns = $block->getColumns();
+        $columns = $this->getGridBlock()->getColumns();
         
-        // Remove only filterable columns
         foreach ($columns as $key => $column) {
             if ($column->getBlcgFilterOnly()) {
                 unset($columns[$key]);
             }
         }
         
-        $orders  = $block->getColumnsOrder();
+        return $columns;
+    }
+    
+    /**
+     * Return an array with the editable columns from the customized columns list of the current grid model,
+     * by column block ID (using false for non-editable columns)
+     * 
+     * @return (BL_CustomGrid_Model_Grid_Column|false)[]
+     */
+    protected function _getEditableCustomizedColumns()
+    {
+        $columns = $this->getGridModel()->getSortedColumns(true, false, true, true, true, true);
         
-        if ($sorted) {
-            $keys   = array_keys($columns);
-            $values = array_values($columns);
-            
-            foreach ($orders as $columnId => $after) {
-                if (array_search($after, $keys) !== false) {
-                    $positionCurrent = array_search($columnId, $keys);
-                    
-                    $key = array_splice($keys, $positionCurrent, 1);
-                    $value = array_splice($values, $positionCurrent, 1);
-                    
-                    $positionTarget = array_search($after, $keys) + 1;
-                    
-                    array_splice($keys, $positionTarget, 0, $key);
-                    array_splice($values, $positionTarget, 0, $value);
-                    
-                    $columns = array_combine($keys, $values);
-                }
+        foreach ($columns as $columnBlockId => $column) {
+            if ($column->isOnlyFilterable()) {
+                unset($columns[$columnBlockId]);
+            } elseif (!$column->isEditable() || !$column->getIsEditAllowed()) {
+                $columns[$columnBlockId] = false;
             }
         }
         
         return $columns;
     }
     
-    public function getEditableColumnsJsonConfig()
+    /**
+     * Return an array with the editable columns from the original columns list of the current grid block,
+     * by column block ID (using false for non-editable columns)
+     * 
+     * @return (BL_CustomGrid_Model_Grid_Column|false)[]
+     */
+    protected function _getEditableDefaultColumns()
     {
-        $block  = $this->getGridBlock();
-        $model  = $this->getGridModel();
-        $config = array();
+        $blockColumns = $this->_getGridBlockSortedColumns();
+        $modelColumns = $this->getGridModel()->getColumns(true);
+        $columns = array();
         
-        if ($model->checkUserActionPermission(BL_CustomGrid_Model_Grid::GRID_ACTION_USE_CUSTOMIZED_COLUMNS)) {
-            $columns = $model->getSortedColumns(true, false, true, true, true, true);
-            
-            // Remove only filterable columns
-            foreach ($columns as $key => $column) {
-                if ($column['filter_only']) {
-                    unset($columns[$key]);
+        foreach (array_keys($blockColumns) as $columnBlockId) {
+            if (isset($modelColumns[$columnBlockId]) && $modelColumns[$columnBlockId]->isGrid()) {
+                if ($modelColumns[$columnBlockId]->isOnlyFilterable()) {
+                    continue;
                 }
-            }
-            
-        } else {
-            $blockColumns = $this->_getBlockSortedColumns($block);
-            $modelColumns = $model->getColumns(true);
-            $columns = array();
-            
-            foreach ($blockColumns as $columnId => $column) {
-                if (isset($modelColumns[$columnId])
-                    && $model->isGridColumnOrigin($modelColumns[$columnId]['origin'])) {
-                    if ($modelColumns[$columnId]['filter_only']) {
-                        // Skip only filterable columns
-                        // @todo check what is / what should be the scope of GRID_ACTION_USE_CUSTOMIZED_COLUMNS
-                        continue;
-                    }
-                    $modelColumn = $modelColumns[$columnId];
-                    
-                    $columns[$columnId] = array(
-                        'allow_edit' => $modelColumn['allow_edit'],
-                        'editable'   => (isset($modelColumn['editable']) ? $modelColumn['editable'] : false),
-                    );
-                } else {
-                    $columns[$columnId] = array('allow_edit' => false);
-                }
+                $columns[$columnBlockId] = $modelColumns[$columnBlockId];
+            } else {
+                $columns[$columnBlockId] = false;
             }
         }
         
-        if ($model->hasUserEditPermissions($block)) {
+        return $columns;
+    }
+    
+    /**
+     * Return the JSON config for the editable columns
+     * 
+     * @return string
+     */
+    public function getEditableColumnsJsonConfig()
+    {
+        $gridModel = $this->getGridModel();
+        $gridBlock = $this->getGridBlock();
+        $editor = $gridModel->getTypeModel()->getEditor();
+        $config = array();
+        
+        if ($gridModel->checkUserActionPermission(BL_CustomGrid_Model_Grid_Sentry::ACTION_USE_CUSTOMIZED_COLUMNS)) {
+            $columns = $this->_getEditableCustomizedColumns();
+        } else {
+            $columns = $this->_getEditableDefaultColumns();
+        }
+        if ($editor->getSentry()->checkBaseUserEditPermissions($gridModel, $gridBlock)) {
             foreach ($columns as $column) {
-                if ($column['allow_edit'] && isset($column['editable']) && is_array($column['editable'])) {
-                    $config[] = $column['editable'];
+                if ($column !== false) {
+                    /** @var $valueConfig BL_CustomGrid_Model_Grid_Editor_Value_Config */
+                    $valueConfig = $column->getEditorConfig();
+                    $config[] = $valueConfig->getEditorJsData();
                 } else {
                     $config[] = false;
                 }
@@ -159,44 +227,39 @@ class BL_CustomGrid_Block_Widget_Grid_Columns_Editor
             $config = array_fill(0, count($columns), false);
         }
         
-        return Mage::helper('core')->jsonEncode($config);
+        return $this->getCoreHelper()->jsonEncode($config);
     }
     
-    public function getAdditionalParamsJson()
-    {
-        return Mage::helper('core')->jsonEncode(
-            $this->getGridModel()->getAdditionalEditParams($this->getGridBlock())
-        );
-    }
-    
+    /**
+     * Return the global edit parameters as JSON
+     * 
+     * @return string
+     */
     public function getGlobalParamsJson()
     {
-        return Mage::helper('core')->jsonEncode(array(
-            'grid_id' => $this->getGridModel()->getId(),
-            'editor_js_object_name' => $this->getJsObjectName(),
-        ));
+        return $this->getCoreHelper()
+            ->jsonEncode(
+                array(
+                    'grid_id' => $this->getGridModel()->getId(),
+                    'profile_id' => $this->getGridModel()->getProfileId(),
+                    'editor_js_object_name' => $this->getJsObjectName(),
+                )
+            );
     }
     
-    public function getErrorMessagesJson()
+    /**
+     * Return the additional edit parameters as JSON
+     * 
+     * @return string
+     */
+    public function getAdditionalParamsJson()
     {
-        return Mage::helper('core')->jsonEncode(
-            array(
-                'edit_request_failure' => $this->__('Failed to edit value'),
-                'save_request_failure' => $this->__('Failed to save value'),
-                'save_no_params'       => $this->__('No parameter to save'),
-            )
-        );
-    }
-    
-    protected function _toHtml()
-    {
-        if (!$this->getIsNewGridModel()
-            && ($model = $this->getGridModel())
-            && $model->checkUserActionPermission(BL_CustomGrid_Model_Grid::GRID_ACTION_EDIT_COLUMNS_VALUES)
-            && ($grid = $this->getGridBlock())
-            && Mage::helper('customgrid')->isRewritedGrid($grid)) {
-            return parent::_toHtml();
-        }
-        return '';
+        return $this->getCoreHelper()
+            ->jsonEncode(
+                $this->getGridModel()
+                    ->getTypeModel()
+                    ->getEditor()
+                    ->getAdditionalEditParams($this->getGridModel()->getBlockType(), $this->getGridBlock())
+            );
     }
 }

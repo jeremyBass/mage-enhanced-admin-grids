@@ -9,32 +9,15 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Model_System_Config_Source_Boolean_Config
+class BL_CustomGrid_Model_System_Config_Source_Boolean_Config extends BL_CustomGrid_Model_Source_Fixed
 {
-    static protected $_options = null;
-    
-    public function getOptions()
-    {
-        if (is_null(self::$_options)) {
-            self::$_options = array(
-                array(
-                    'label' => Mage::helper('customgrid')->__('Use Config'),
-                    'value' => 0
-                ),
-                array(
-                    'label' => Mage::helper('customgrid')->__('Yes'),
-                    'value' => 1
-                ),
-                array(
-                    'label' => Mage::helper('customgrid')->__('No'),
-                    'value' => 2
-                ),
-            );
-        }
-        return self::$_options;
-    }
+    protected $_optionHash = array(
+        0 => 'Use Config',
+        1 => 'Yes',
+        2 => 'No',
+    );
 }

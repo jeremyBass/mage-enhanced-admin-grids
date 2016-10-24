@@ -9,85 +9,186 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Model_Custom_Column_Simple_Table
-    extends BL_CustomGrid_Model_Custom_Column_Simple_Abstract
+class BL_CustomGrid_Model_Custom_Column_Simple_Table extends BL_CustomGrid_Model_Custom_Column_Simple_Abstract
 {
+    /**
+     * Names of the collection flags corresponding to the aliases of the different joined tables,
+     * arranged by flag key
+     * (a flag key depending on the table name and possibly various other parameters from the current context)
+     * 
+     * @var array
+     */
     static protected $_tablesAppliedFlags = array();
     
-    public function getAppliedFlagKey($alias, $params, $block, $collection, $table)
-    {
-        return $table;
-    }
-    
+    /**
+     * Return the name of the joined table
+     * 
+     * @return string
+     */
     public function getTableName()
     {
-        return $this->getModelParam('table_name');
+        return $this->getConfigParam('table_name');
     }
     
-    public function getJoinConditionMainField()
+    /**
+     * Return a hash from the given table name
+     * 
+     * @param string $tableName Table name
+     * @return string
+     */
+    public function getTableHash($tableName)
     {
-        return $this->getModelParam('join_condition_main_field');
+        return md5($tableName);
     }
     
-    public function getJoinConditionTableField()
+    /**
+     * Return the name of the field from the main table, that will be used for the tables join
+     * 
+     * @return string
+     */
+    public function getJoinConditionMainFieldName()
     {
-        return $this->getModelParam('join_condition_table_field');
+        return $this->getConfigParam('join_condition_main_field_name');
     }
     
+    /**
+     * Return the name of the field from the joined table, that will be used for the tables join
+     * 
+     * @return string
+     */
+    public function getJoinConditionTableFieldName()
+    {
+        return $this->getConfigParam('join_condition_table_field_name');
+    }
+    
+    /**
+     * Return the name of the displayable field from the joined table
+     * 
+     * @return string
+     */
     public function getTableFieldName()
     {
-        return $this->getModelParam('table_field_name');
+        return $this->getConfigParam('table_field_name');
     }
     
-    public function getAdditionalJoinConditions($alias, $params, $block, $collection, $mainAlias, $tableAlias)
-    {
+    /**
+     * Return the additional join conditions to use, between the main table and the joined table
+     * 
+     * @param string $columnIndex Grid column index
+     * @param array $params Customization parameters values
+     * @param Mage_Adminhtml_Block_Widget_Grid $gridBlock Grid block
+     * @param Varien_Data_Collection_Db $collection Grid collection
+     * @param mixed $mainAlias Main table alias
+     * @param mixed $tableAlias Joined table alias
+     * @return array
+     */
+    protected function _getAdditionalJoinConditions(
+        $columnIndex,
+        array $params,
+        Mage_Adminhtml_Block_Widget_Grid $gridBlock,
+        Varien_Data_Collection_Db $collection,
+        $mainAlias,
+        $tableAlias
+    ) {
         return array();
     }
     
-    public function addFieldToGridCollection($alias, $params, $block, $collection)
-    {
-        $helper    = $this->_getCollectionHelper();
-        $table     = $this->getTableName();
-        $tableHash = md5($table);
-        $flagKey   = $this->getAppliedFlagKey($alias, $params, $block, $collection, $table);
-        list($adapter, $qi) = $this->_getCollectionAdapter($collection, true);
+    /**
+     * Return the flag key usable to arrange the generated alias for the given table name, in the given context
+     * 
+     * @param string $columnIndex Grid column index
+     * @param array $params Customization parameters values
+     * @param Mage_Adminhtml_Block_Widget_Grid $gridBlock Grid block
+     * @param Varien_Data_Collection_Db $collection Grid collection
+     * @param string $tableName Table name
+     * @return string
+     */
+    protected function _getAppliedFlagKey(
+        $columnIndex,
+        array $params,
+        Mage_Adminhtml_Block_Widget_Grid $gridBlock,
+        Varien_Data_Collection_Db $collection,
+        $tableName
+    ) {
+        return $tableName;
+    }
+    
+    /**
+     * Return the alias used for the joined table on the given grid collection (and join it first if necessary)
+     * 
+     * @param string $columnIndex Grid column index
+     * @param array $params Customization parameters values
+     * @param Mage_Adminhtml_Block_Widget_Grid $gridBlock Grid block
+     * @param Varien_Data_Collection_Db $collection Grid collection
+     * @return string
+     */
+    protected function _getJoinedTableAlias(
+        $columnIndex,
+        array $params,
+        Mage_Adminhtml_Block_Widget_Grid $gridBlock,
+        Varien_Data_Collection_Db $collection
+    ) {
+        $collectionHandler = $this->getCollectionHandler();
+        $tableName  = $this->getTableName();
+        $tableHash  = $this->getTableHash($tableName);
+        $flagKey    = $this->_getAppliedFlagKey($columnIndex, $params, $gridBlock, $collection, $tableName);
+        list(, $qi) = $collectionHandler->getCollectionAdapter($collection, true);
         
-        if (!isset(self::$_tablesAppliedFlags[$table])) {
-            self::$_tablesAppliedFlags[$flagKey] = $this->_getUniqueCollectionFlag('_'.$tableHash);
+        if (!isset(self::$_tablesAppliedFlags[$flagKey])) {
+            self::$_tablesAppliedFlags[$flagKey] = $collectionHandler->getUniqueCollectionFlag('_' . $tableHash);
         }
+        
         $appliedFlag = self::$_tablesAppliedFlags[$flagKey];
         
         if (!$tableAlias = $collection->getFlag($appliedFlag)) {
-            $mainAlias  = $helper->getCollectionMainTableAlias($collection);
-            $tableAlias = $this->_getUniqueTableAlias('_'.$tableHash);
+            $select = $collection->getSelect();
+            $mainAlias  = $collectionHandler->getCollectionMainTableAlias($collection);
+            $tableAlias = $collectionHandler->getUniqueTableAlias('_' . $tableHash);
+            $mainFieldName  = $this->getJoinConditionMainFieldName();
+            $tableFieldName = $this->getJoinConditionTableFieldName();
             
-            $collection->getSelect()
-                ->joinLeft(
-                    array($tableAlias => $collection->getTable($table)),
-                    implode(
-                        ' AND ',
-                        array_merge(
-                            array(
-                                $qi($tableAlias.'.'.$this->getJoinConditionTableField())
-                                    .' = '.$qi($mainAlias.'.'.$this->getJoinConditionMainField()),
-                            ),
-                            $this->getAdditionalJoinConditions($alias, $params, $block, $collection, $mainAlias, $tableAlias)
-                        )
-                    ),
-                    array()
-                );
+            $joinConditions = array_merge(
+                array($qi($tableAlias . '.' . $tableFieldName) . ' = ' . $qi($mainAlias . '.' . $mainFieldName)),
+                $this->_getAdditionalJoinConditions(
+                    $columnIndex,
+                    $params,
+                    $gridBlock,
+                    $collection,
+                    $mainAlias,
+                    $tableAlias
+                )
+            );
+            
+            $select->joinLeft(
+                array($tableAlias => $collection->getTable($tableName)),
+                implode(' AND ', $joinConditions),
+                array()
+            );
             
             $collection->setFlag($appliedFlag, $tableAlias);
         }
         
-        $field = $this->getTableFieldName();
-        $collection->getSelect()->columns(array($alias => $tableAlias.'.'.$field), $tableAlias);
-        $helper->addFilterToCollectionMap($collection, $qi($tableAlias.'.'.$field), $alias);
-        
-        return $this;
+        return $tableAlias;
+    }
+    
+    public function addFieldToGridCollection(
+        $columnIndex,
+        array $params,
+        Mage_Adminhtml_Block_Widget_Grid $gridBlock,
+        Varien_Data_Collection_Db $collection
+    ) {
+        return $this->_addFieldToSelect(
+            $collection->getSelect(),
+            $columnIndex,
+            $this->getTableFieldName(),
+            $this->_getJoinedTableAlias($columnIndex, $params, $gridBlock, $collection),
+            $params,
+            $gridBlock,
+            $collection
+        );
     }
 }

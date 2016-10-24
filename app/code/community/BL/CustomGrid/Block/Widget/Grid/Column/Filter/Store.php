@@ -34,70 +34,137 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Block_Widget_Grid_Column_Filter_Store
-    extends Mage_Adminhtml_Block_Widget_Grid_Column_Filter_Abstract
+class BL_CustomGrid_Block_Widget_Grid_Column_Filter_Store extends Mage_Adminhtml_Block_Widget_Grid_Column_Filter_Abstract
 {
-
-    public function getHtml()
-    {
-        $storeModel = Mage::getSingleton('adminhtml/system_store');
-        $websiteCollection = $storeModel->getWebsiteCollection();
-        $groupCollection   = $storeModel->getGroupCollection();
-        $storeCollection   = $storeModel->getStoreCollection();
+    /**
+     * Return the HTML content for the options corresponding to the given stores that belong to the given store group
+     * 
+     * @param Mage_Core_Model_Website $website Current website
+     * @param Mage_Core_Model_Store_Group $storeGroup Current store group
+     * @param Mage_Core_Model_Store[] $stores All stores
+     * @param bool $shownWebsite Whether the website has been displayed
+     * @param bool $shownStoreGroup Whether the store group has been displayed
+     * @return string
+     */
+    protected function _getStoresOptionsHtml(
+        Mage_Core_Model_Website $website,
+        Mage_Core_Model_Store_Group $storeGroup,
+        array $stores,
+        &$shownWebsite,
+        &$shownStoreGroup
+    ) {
+        $html   = '';
+        $value  = $this->getValue();
+        $spaces = str_repeat('&nbsp;', 4);
         
-        $html  = '<select name="' . $this->_getHtmlName() . '" ' . $this->getColumn()->getValidateClass() . '>';
-        $value = $this->getColumn()->getValue();
-        $html .= '<option value=""' . (!$value ? ' selected="selected"' : '') . '></option>';
-        $html .= '<option value="0"' . (strval($value) === '0' ? ' selected="selected"' : '') . '>' . Mage::helper('adminhtml')->__('All Store Views') . '</option>';
-        
-        foreach ($websiteCollection as $website) {
-            $websiteShow = false;
-            foreach ($groupCollection as $group) {
-                if ($group->getWebsiteId() != $website->getId()) {
-                    continue;
-                }
-                $groupShow = false;
-                foreach ($storeCollection as $store) {
-                    if ($store->getGroupId() != $group->getId()) {
-                        continue;
-                    }
-                    if (!$websiteShow) {
-                        $websiteShow = true;
-                        $html .= '<optgroup label="' . $website->getName() . '"></optgroup>';
-                    }
-                    if (!$groupShow) {
-                        $groupShow = true;
-                        $html .= '<optgroup label="&nbsp;&nbsp;&nbsp;&nbsp;' . $group->getName() . '">';
-                    }
-                    $value = $this->getValue();
-                    $html .= '<option value="' . $store->getId() . '"' . ($value == $store->getId() ? ' selected="selected"' : '') . '>&nbsp;&nbsp;&nbsp;&nbsp;' . $store->getName() . '</option>';
-                }
-                if ($groupShow) {
-                    $html .= '</optgroup>';
-                }
+        foreach ($stores as $store) {
+            if ($store->getGroupId() != $storeGroup->getId()) {
+                continue;
             }
+            if (!$shownWebsite) {
+                $shownWebsite = true;
+                $html .= '<optgroup label="' . $this->htmlEscape($website->getName()) . '"></optgroup>';
+            }
+            if (!$shownStoreGroup) {
+                $shownStoreGroup = true;
+                $html .= '<optgroup label="' . $this->htmlEscape($storeGroup->getName()) . '">';
+            }
+            
+            $html .= '<option value="' . $store->getId() . '"'
+                . ($value == $store->getId() ? ' selected="selected" ' : '') . '>'
+                . $spaces . $store->getName()
+                . '</option>';
         }
         
-        $selected = ($this->getValue() == '_deleted_') ? ' selected' : '';
-        $html .= '<option value="_deleted_"'.$selected.'>'.$this->__('[ deleted ]').'</option>';
-        $html .= '</select>';
+        if ($shownStoreGroup) {
+            $html .= '</optgroup>';
+        }
+        
+        return $html;
+    }
+    
+    /**
+     * Return the HTML content for the options corresponding to the given store groups and their stores
+     * that belong to the given website
+     * 
+     * @param Mage_Core_Model_Website $website Current website
+     * @param Mage_Core_Model_Store_Group[] $storeGroups All store groups
+     * @param Mage_Core_Model_Store[] $stores All stores
+     * @param bool $shownWebsite Whether the website has been displayed
+     * @return string
+     */
+    protected function _getStoreGroupsOptionsHtml(
+        Mage_Core_Model_Website $website,
+        array $storeGroups,
+        array $stores,
+        &$shownWebsite
+    ) {
+        $html = '';
+        
+        foreach ($storeGroups as $storeGroup) {
+            $shownStoreGroup = false;
+            
+            if ($storeGroup->getWebsiteId() != $website->getId()) {
+                continue;
+            }
+            
+            $html .= $this->_getStoresOptionsHtml($website, $storeGroup, $stores, $shownWebsite, $shownStoreGroup);
+        }
+        
+        return $html;
+    }
+    
+    /**
+     * Return the HTML content for the options corresponding to the available websites
+     * 
+     * @return string
+     */
+    protected function _getWebsitesOptionsHtml()
+    {
+        $storeModel  = Mage::getSingleton('adminhtml/system_store');
+        $websites    = $storeModel->getWebsiteCollection();
+        $storeGroups = $storeModel->getGroupCollection();
+        $stores      = $storeModel->getStoreCollection();
+        $html = '';
+        
+        foreach ($websites as $website) {
+            $shownWebsite = false;
+            $html .= $this->_getStoreGroupsOptionsHtml($website, $storeGroups, $stores, $shownWebsite);
+        }
+        
+        return $html;
+    }
+    
+    public function getHtml()
+    {
+        $value = $this->getValue();
+        
+        $html = '<select name="' . $this->_getHtmlName() . '" ' . $this->getColumn()->getValidateClass() . '>'
+            . '<option value=""'  . (!$value ? ' selected="selected"' : '') . '></option>'
+            . '<option value="0"' . (strval($value) === '0' ? ' selected="selected"' : '') . '>'
+            . $this->__('All Store Views')
+            . '</option>'
+            . $this->_getWebsitesOptionsHtml()
+            . '<option value="_deleted_"' . ($value == '_deleted_' ? ' selected="selected"' : '') . '>'
+            . $this->__('[ deleted ]')
+            . '</option>'
+            . '</select>';
+        
         return $html;
     }
     
     public function getCondition()
     {
-        if (is_null($this->getValue())) {
+        if (is_null($value = $this->getValue())) {
             return null;
         }
-        if ($this->getValue() == '_deleted_') {
+        if ($value == '_deleted_') {
             return array('null' => true);
         }
-        else {
-            return array('eq' => $this->getValue());
-        }
+        return array('eq' => $value);
     }
 }

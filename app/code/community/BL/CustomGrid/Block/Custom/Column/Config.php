@@ -9,45 +9,72 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Block_Custom_Column_Config
-    extends Mage_Adminhtml_Block_Widget_Form_Container
+class BL_CustomGrid_Block_Custom_Column_Config extends BL_CustomGrid_Block_Config_Container_Abstract
 {
-    public function __construct()
-    {
-        parent::__construct();
-        
-        $this->_blockGroup = 'customgrid';
-        $this->_controller = 'custom_column';
-        $this->_mode = 'config';
-        $this->_headerText = $this->getCustomColumn()->getName();
-        
-        $this->removeButton('reset');
-        $this->removeButton('back');
-        $this->_updateButton('save', 'label', $this->__('Apply Configuration'));
-        $this->_updateButton('save', 'id', 'insert_button');
-        $this->_updateButton('save', 'onclick', 'blcgCustomColumnForm.insertParams()');
-        
-        $this->_formScripts[] = 'blcgCustomColumnForm = new blcg.CustomColumn.Form("custom_column_config_options_form", "'
-            . $this->getRequest()->getParam('renderer_target_id') . '");';
-    }
-    
-    public function getCustomColumn()
-    {
-        if (!$column = Mage::registry('current_custom_column')) {
-            Mage::throwException($this->__('Custom column is not specified'));
-        }
-        return $column;
-    }
+    protected $_blockGroup = 'customgrid';
+    protected $_mode = 'config';
     
     protected function _beforeToHtml()
     {
+        $this->_formScripts[] =  $this->getJsObjectName() . ' = new blcg.Grid.CustomColumn.ConfigForm('
+            . '"blcg_custom_column_config_form", '
+            . '"' . $this->getConfigTargetId() . '"'
+            . ');';
+        
         if ($formBlock = $this->getChild('form')) {
-            $formBlock->setConfigParams($this->getConfigParams());
+            /** @var $formBlock BL_CustomGrid_Block_Custom_Column_Config_Form */
+            $formBlock->setConfigValues($this->getConfigValues());
         }
+        
         return parent::_beforeToHtml();
+    }
+    
+    /**
+     * Return the current custom column
+     * 
+     * @return BL_CustomGrid_Model_Custom_Column_Abstract
+     */
+    public function getCustomColumn()
+    {
+        return Mage::registry('blcg_custom_column');
+    }
+    
+    protected function _getController()
+    {
+        return 'custom_column';
+    }
+    
+    protected function _getHeaderText()
+    {
+        return $this->getCustomColumn()->getName();
+    }
+    
+    protected function _getSaveButtonId()
+    {
+        return 'blcg_custom_column_config_insert_button';
+    }
+    
+    public function getJsObjectName()
+    {
+        return 'blcgCustomColumnConfigForm';
+    }
+    
+    public function getUseDefaultJsFormObject()
+    {
+        return false;
+    }
+    
+    /**
+     * Return the HTML ID of the target element for the configuration values
+     * 
+     * @return string
+     */
+    public function getConfigTargetId()
+    {
+        return $this->getDataSetDefault('config_target_id', '');
     }
 }

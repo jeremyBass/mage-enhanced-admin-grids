@@ -1,14 +1,26 @@
+[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/mage-eag/mage-enhanced-admin-grids/badges/quality-score.png?b=1.0.0-wip-edge)](https://scrutinizer-ci.com/g/mage-eag/mage-enhanced-admin-grids/?branch=1.0.0-wip-edge) [![Build Status](https://scrutinizer-ci.com/g/mage-eag/mage-enhanced-admin-grids/badges/build.png?b=1.0.0-wip)](https://scrutinizer-ci.com/g/mage-eag/mage-enhanced-admin-grids/build-status/1.0.0-wip)
+
 # Enhanced Admin Grids
+## Version 1.0.0 (work-in-progress / edge)
 
+_This version includes the latest changes which are considered too experimental to be featured in the [base work-in-progress branch](https://github.com/mage-eag/mage-enhanced-admin-grids/tree/1.0.0-wip). As such, it should only be used for testing purposes._
 
-Enhanced Admin Grids extension for Magento.
-More informations about the extension can be found on its Magento Connect page here : https://www.magentocommerce.com/magento-connect/enhanced-admin-grids-editor.html
-
-_The new version is now under development, and should include :_
-- first wave of massive code refactoring (goals: clean-up almost every part of the code for a better maintainability, more consistency, more independence, better practices and a smaller footprint)
-- refined permissions
-- profiles system (for each grid, will allow to use different columns lists and parameters, assignable to different roles)
-- advanced filtering possibilities for text and options columns
-- in-grid customizations saved via Ajax, so that the pages do not (annoyingly) reload when customizations are saved from (eg) a product view tab
-
-No time frame for the moment, but a development version should hopefully be available within a month or two
+### Final steps before beta release
+- [ ] last waves of code refactoring/cleanup and complexity reduction (focus on [Scrutinizer hot spots](https://scrutinizer-ci.com/g/mage-eag/mage-enhanced-admin-grids/code-structure/1.0.0-wip/hot-spots))
+- [ ] **editor system refactoring** :
+    - [X] separate responsibilities into different models, introduce callbacks
+    - [X] implement custom columns editability
+    - [X] implement order address columns editability
+    - [X] implement inventory columns editability
+    - [ ] create a spreadsheet summarizing the compatibility of each editor across the different Magento versions (use three different states : "untested", "tested and functional", "tested with problems" - provide links to the related issues -)
+    - [ ] start filling up the compatibility spreadsheet
+- [ ] **JS code refactoring** :
+    - [ ] remove `CDATA` sections
+    - [ ] refactor and optimize code when possible
+    - [ ] review the code style (follow some best practices)
+    - [ ] ~~write comments (use [JSDoc](http://usejsdoc.org/index.html))~~ **(probably not worth the time)**
+    - [ ] implement an object manager, to remove as much clutter as possible from the global scope, and automatically cleanup unneeded/overridable objects (especially for Ajax grids)
+- [X] move the columns list form to dedicated window, as for the other forms (avoid cluttering any external wrapping form with a lot of parameters)
+- [X] rework the profiles bar so that the number of displayed profiles is adapted to the available width
+- [ ] rework the "Access All" profiles permission (make all the profiles be available from everywhere, except in the bar)
+- [ ] ~~rework the sales items columns (implement the advanced text filter, improve their extensibility, and allow to display a customizable value when exported)~~ **(later)**

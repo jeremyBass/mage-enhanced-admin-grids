@@ -9,91 +9,40 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Model_Grid_Type_Tax_Class
-    extends BL_CustomGrid_Model_Grid_Type_Abstract
+class BL_CustomGrid_Model_Grid_Type_Tax_Class extends BL_CustomGrid_Model_Grid_Type_Abstract
 {
-    public function isAppliableToGrid($type, $rewritingClassName)
+    protected function _getSupportedBlockTypes()
     {
-        return ($type == 'adminhtml/tax_class_grid');
+        return array('adminhtml/tax_class_grid');
     }
     
-    public function canExport($type)
+    public function canExport($blockType)
     {
-        /**
-        * @todo if wanting to get export running for those grids (and perhaps others) :
-        * Add additional export params from method with grid block instance as parameter
-        * This way we'll be able to give the class type to a custom controller
-        * -> could be done along with the new export system
-        */
         return false;
     }
     
-    public function checkUserEditPermissions($type, $model, $block=null, $params=array())
+    protected function _getEditorModelClassCode()
     {
-        if (parent::checkUserEditPermissions($type, $model, $block, $params)) {
-            if (!is_null($block)) {
-                $classType = $block->getClassType();
-            } elseif (isset($params['additional']['class_type'])) {
-                $classType = $params['additional']['class_type'];
-            } else {
-                $classType = null;
-            }
-            
-            switch ($classType) {
-                case Mage_Tax_Model_Class::TAX_CLASS_TYPE_CUSTOMER:
-                    return Mage::getSingleton('admin/session')->isAllowed('sales/tax/classes_customer');
-                case Mage_Tax_Model_Class::TAX_CLASS_TYPE_PRODUCT:
-                    return Mage::getSingleton('admin/session')->isAllowed('sales/tax/classes_product');
-            }
-        }
-        return false;
+        return 'customgrid/grid_editor_tax_class';
     }
     
-    protected function _getBaseEditableFields($type)
-    {
-        return array(
-            'class_name' => array(
-                'type'       => 'text',
-                'required'   => true,
-                'form_class' => 'required-entry',
-            ),
-        );
-    }
-    
-    public function getAdditionalEditParams($type, $grid)
-    {
-        return array('class_type' => $grid->getClassType());
-    }
-    
-    protected function _getEntityRowIdentifiersKeys($type)
-    {
-        return array('class_id');
-    }
-    
-    protected function _loadEditedEntity($type, $config, $params)
-    {
-        if (isset($params['ids']['class_id'])
+    protected function _isEditedEntityLoaded(
+        $blockType,
+        BL_CustomGrid_Object $config,
+        array $params,
+        $entity,
+        $entityId
+    ) {
+        if (parent::_isEditedEntityLoaded($blockType, $config, $params, $entity, $entityId)
+            && isset($params['additional'])
             && isset($params['additional']['class_type'])) {
-            return Mage::getModel('tax/class')->load($params['ids']['class_id']);
-        }
-        return null;
-    }
-    
-    protected function _isEditedEntityLoaded($type, $config, $params, $entity)
-    {
-        if (parent::_isEditedEntityLoaded($type, $config, $params, $entity)
-            && isset($params['additional']['class_type'])) {
+            /** @var $entity Mage_Tax_Model_Class */
             return ($entity->getClassType() == $params['additional']['class_type']);
         }
         return false;
-    }
-    
-    protected function _getLoadedEntityName($type, $config, $params, $entity)
-    {
-        return $entity->getClassName();
     }
 }

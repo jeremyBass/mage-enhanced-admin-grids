@@ -9,23 +9,22 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2013 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Block_Widget_Grid_Column_Filter_Yesno
-    extends BL_CustomGrid_Block_Widget_Grid_Column_Filter_Select
+class BL_CustomGrid_Block_Widget_Grid_Column_Filter_Yesno extends BL_CustomGrid_Block_Widget_Grid_Column_Filter_Select
 {
     protected function _getOptions()
     {
         return array(
             array(
                 'value' => 1,
-                'label' => Mage::helper('customgrid')->__('Yes'),
+                'label' => $this->__('Yes'),
             ),
             array(
                 'value' => 0,
-                'label' => Mage::helper('customgrid')->__('No'),
+                'label' => $this->__('No'),
             ),
         );
     }

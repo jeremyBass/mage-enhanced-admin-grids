@@ -9,44 +9,43 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2015 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class BL_CustomGrid_Block_Custom_Column_Config_Form
-    extends BL_CustomGrid_Block_Config_Form_Abstract
+class BL_CustomGrid_Block_Custom_Column_Config_Form extends BL_CustomGrid_Block_Config_Form_Abstract
 {
-    public function getCustomColumn()
+    public function getFormId()
     {
-        if (!$column = Mage::registry('current_custom_column')) {
-            Mage::throwException($this->__('Custom column is not specified'));
-        }
-        return $column;
-    }
-    
-    protected function _getFormId()
-    {
-        return 'custom_column_config_options_form';
+        return 'blcg_custom_column_config_form';
     }
     
     protected function _getFormCode()
     {
-        return $this->getCustomColumn()->getId();
+        return 'custom_column_' . $this->getCustomColumn()->getId();
     }
     
-    public function addConfigFields($fieldset)
+    protected function _getFormAction()
     {
-        $column = $this->getCustomColumn();
-        $module = $column->getModule();
-        $this->_translationHelper = Mage::helper($module ? $module : 'customgrid');
+        return $this->getUrl('*/*/buildConfig');
+    }
+    
+    protected function _getFormFields()
+    {
+        $customColumn = $this->getCustomColumn();
+        $fields = array();
         
-        if (!$column->getAllowCustomization()) {
-            return $this;
-        }
-        foreach ($column->getCustomParamsConfig() as $parameter) {
-            $this->_addConfigField($fieldset, $parameter);
+        if ($customColumn->getAllowCustomization()) {
+            foreach ($customColumn->getCustomizationParams(true) as $parameter) {
+                $fields[] = $parameter;
+            }
         }
         
-        return $this;
+        return $fields;
+    }
+    
+    protected function _getTranslationModule()
+    {
+        return $this->getCustomColumn()->getModule();
     }
 }
