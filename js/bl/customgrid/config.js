@@ -33,7 +33,7 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2011 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
@@ -58,12 +58,14 @@ blcg.Tools = {
     
     _openDialog: function(windowConfig, otherWindow)
     {
-        if (!otherWindow && ($('blcg_window') && (typeof(Windows) != 'undefined'))) {
+        if (!otherWindow && $('blcg_window') && (typeof(Windows) != 'undefined')) {
             Windows.focus('blcg_window');
             return;
         }
         
-        var windowId = 'blcg_window' + (otherWindow ? '_'+(++this.windowsNumber) : '');
+        var windowId  = 'blcg_window' + (otherWindow ? '_'+(++this.windowsNumber) : ''),
+            windowUrl = windowConfig.url;
+        
         windowConfig = Object.extend({
             draggable: false,
             resizable: false,
@@ -84,9 +86,17 @@ blcg.Tools = {
         if (windowConfig.resizable) {
             windowConfig.windowClassName += ' blcg-resizable-popup-window';
         }
+        if (windowUrl) {
+            // Dialog.info() doesn't care about url parameter, then always uses innerHTML even when it shouldn't
+            windowConfig.url = '';
+        }
         
         var dialogWindow = Dialog.info(null, windowConfig);
         
+        if (windowUrl) {
+            // We can safely set URL now, the Dialog class will not interfere anymore
+            dialogWindow.setURL(windowUrl);
+        }
         if (!otherWindow) {
             this.dialogWindow = dialogWindow;
             return;
@@ -202,7 +212,7 @@ blcg.Tools = {
         });
         
         if (valid) {
-            var form = document.createElement('form');
+            var form = $(document.createElement('form'));
             form.writeAttribute({
                 'action': url,
                 'method': ((method == 'GET') || (method == 'POST') ? method : 'POST')
@@ -210,7 +220,7 @@ blcg.Tools = {
             document.body.appendChild(form);
             
             $A(elements).each(function(element){
-                var input = document.createElement('input');
+                var input = $(document.createElement('input'));
                 input.writeAttribute({
                     'type':  'hidden',
                     'name':  element.readAttribute('name'),
@@ -221,7 +231,7 @@ blcg.Tools = {
             
             additional = $H(additional || {});
             additional.each(function(option){
-                var input = document.createElement('input');
+                var input = $(document.createElement('input'));
                 input.writeAttribute({
                     'type':  'hidden',
                     'name':  option.key,
@@ -235,101 +245,200 @@ blcg.Tools = {
         } else {
             return false;
         }
+    },
+    
+    checkContainerCheckboxes: function(containerId, checked)
+    {
+        $(containerId).getElementsBySelector('input[type=checkbox]').each(function(cb){
+            cb.checked = !!checked;
+        });
     }
-}
+};
 
-blcg.CollectionRenderer = {};
-blcg.CollectionRenderer.Select = Class.create();
-blcg.CollectionRenderer.Select.prototype = {
-    initialize: function(select, renderersConfig, configButtonId, rendererTargetId, configUrl)
+blcg.EventsManager = Class.create();
+blcg.EventsManager.prototype = {
+    initialize: function()
     {
-        this.select = $(select);
-        this.configUrl = configUrl;
+        this.handlers = $H({});
+    },
+    
+    addUniqueHandler: function(id, type, element, eventName, callback)
+    {
+        var handler = this.handlers.get(id);
         
-        this.renderersConfig = $H({});
-        $A(renderersConfig).each(function(renderer){
-            if (renderer.code) {
-                this.renderersConfig[renderer.code] = Object.extend({
-                    code: '',
-                    isCustomizable: false
-                }, renderer);
+        if (handler) {
+            if (handler.type == 'varien') {
+                if (typeof(varienGlobalEvents) != 'undefined') {
+                    varienGlobalEvents.removeEventHandler(handler.eventName, handler.callback)
+                }
+            } else if (type == 'prototype') {
+                Event.stopObserving(handler.element, handler.eventName, handler.callback);
             }
-        }.bind(this));
-        this.renderersParams = $H({});
-        
-        this.configButton = $(configButtonId);
-        this.configButton.hide();
-        this.rendererTargetId = rendererTargetId;
-        
-        var code = $F(this.select);
-        if (code && this.renderersConfig[code]) {
-            this.currentRenderer = code;
-            this.renderersParams[code] = $F(this.rendererTargetId);
-        } else {
-            this.currentRenderer = null;
-            $(this.rendererTargetId).value = '';
+            this.handlers.unset(id);
         }
-        
-        this.onRendererChange();
-        
-        if (this.select.tagName.toUpperCase() == 'SELECT') {
-            this.select.observe('change', this.onRendererChange.bind(this));
-        }
-    },
-    
-    enableConfigButton: function(code, url, windowConfig)
-    {
-        if (this.currentRenderer) {
-            this.renderersParams[this.currentRenderer] = $F(this.rendererTargetId);
-        }
-        if (this.renderersParams[code]) {
-            $(this.rendererTargetId).value = this.renderersParams[code];
-        } else {
-            $(this.rendererTargetId).value = '';
-        }
-        
-        this.configButton.show();
-        this.configButton.stopObserving('click');
-        this.configButton.observe('click', function(){ 
-            blcg.Tools.openDialogFromPost(url, {
-              'code': code,
-              'renderer_target_id':  this.rendererTargetId,
-              'params': $F(this.rendererTargetId)
-            }, windowConfig);
-        }.bind(this));
-    },
-    
-    disableConfigButton: function()
-    {
-        if (this.currentRenderer) {
-            this.renderersParams[this.currentRenderer] = $F(this.rendererTargetId);
-        }
-        $(this.rendererTargetId).value = '';
-        this.configButton.stopObserving('click');
-        this.configButton.hide();
-    },
-    
-    onRendererChange: function()
-    {
-        var code = $F(this.select);
-        if (code && this.renderersConfig[code]) {
-            var renderer = this.renderersConfig[code];
-            if (renderer.isCustomizable) { 
-                this.enableConfigButton(renderer.code, this.configUrl, renderer.windowConfig);
+        if (type == 'varien') {
+            if (typeof(varienGlobalEvents) != 'undefined') {
+                varienGlobalEvents.attachEventHandler(eventName, callback);
             } else {
-                this.disableConfigButton();
+                return;
             }
-            this.currentRenderer = code;
+        } else if (type == 'prototype') {
+            Event.observe(element, eventName, callback);
         } else {
-            this.disableConfigButton();
-            this.currentRenderer = '';
+            return;
         }
+        
+        this.handlers.set(id, {type: type, element: element, eventName: eventName, callback: callback});
     }
-}
+};
 
-blcg.Renderer = {};
-blcg.Renderer.Config = Class.create();
-blcg.Renderer.Config.prototype = {
+blcgEventsManager = new blcg.EventsManager();
+
+/*
+ * Copyright (c) 2006 Jonathan Weiss <jw@innerewut.de>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+blcg.Tooltip = Class.create();
+blcg.Tooltip.prototype = {
+    initialize: function(element, tooltip)
+    {
+        var options = Object.extend({
+            defaultCss: false,
+            margin: '0px',
+            padding: '5px',
+            bgColor: '#fff',
+            xMinDist: 20,
+            yMinDist: 5,
+            xDelta: 0,
+            yDelta: 0,
+            zIndex: 1000,
+            moving: false
+        }, arguments[2] || {});
+       
+        this.element = $(element);
+        this.options = options;
+        
+        if ($(tooltip)) {
+            this.tooltip = $(tooltip);
+        } else {
+            this.tooltip = $(document.createElement('div')); 
+            this.tooltip.appendChild(document.createTextNode(tooltip));
+        }
+        this.tooltip.addClassName('blcg-tooltip');
+        document.body.appendChild(this.tooltip);
+        this.tooltip.hide();
+        
+        this.eventMouseOver = this.showTooltip.bindAsEventListener(this);
+        this.eventMouseOut  = this.hideTooltip.bindAsEventListener(this);
+        if (this.options.moving) {
+            this.eventMouseMove = this.moveTooltip.bindAsEventListener(this);
+        }
+        this.registerEvents();
+    },
+    
+    destroy: function()
+    {
+        Event.stopObserving(this.element, 'mouseover', this.eventMouseOver);
+        Event.stopObserving(this.element, 'mouseout',  this.eventMouseOut);
+        if (this.options.moving) {
+            Event.stopObserving(this.element, 'mousemove', this.eventMouseMove);
+        }
+    },
+    
+    registerEvents: function()
+    {
+        Event.observe(this.element, 'mouseover', this.eventMouseOver);
+        Event.observe(this.element, 'mouseout',  this.eventMouseOut);
+        if (this.options.moving) {
+            Event.observe(this.element, 'mousemove', this.eventMouseMove);
+        }
+    },
+    
+    moveTooltip: function(event)
+    {
+        Event.stop(event);
+        var mouseX = Event.pointerX(event);
+        var mouseY = Event.pointerY(event);
+        
+        var dimensions = Element.getDimensions(this.tooltip);
+        var elmWidth   = dimensions.width;
+        var elmHeight  = dimensions.height;
+        var winScroll  = this.getWindowScrolls();
+        
+        if ((elmWidth + mouseX - winScroll.left) >= (this.getWindowWidth() - this.options.xMinDist)) {
+            mouseX -= elmWidth + this.options.xMinDist;
+        } else {
+            mouseX += this.options.xMinDist;
+        }
+        if ((elmHeight + mouseY - winScroll.top) >= (this.getWindowHeight() - this.options.yMinDist)) {
+            mouseY -= elmHeight + this.options.yMinDist;
+        } else {
+            mouseY += this.options.yMinDist;
+        } 
+        
+        this.setStyles(mouseX, mouseY);
+    },
+    
+    showTooltip: function(event)
+    {
+        Event.stop(event);
+        this.moveTooltip(event);
+        new Element.show(this.tooltip);
+    },
+    
+    setStyles: function(x, y)
+    {
+        Element.setStyle(this.tooltip, {
+            position: 'absolute',
+            top: y + this.options.yDelta + 'px',
+            left: x + this.options.xDelta + 'px',
+            zindex: this.options.zIndex
+        });
+        if (this.options.default_css){
+            Element.setStyle(this.tooltip, {
+                margin: this.options.margin,
+                padding: this.options.padding,
+                backgroundColor: this.options.bgColor,
+                zindex: this.options.zIndex
+            });
+        }
+    },
+    
+    hideTooltip: function(event)
+    {
+        Element.hide(this.tooltip);
+    },
+    
+    getWindowHeight: function()
+    {
+        return document.viewport.getHeight();	
+    },
+    
+    getWindowWidth: function()
+    {
+        return document.viewport.getWidth();	
+    },
+        
+    getWindowScrolls: function()
+    {
+        return document.viewport.getScrollOffsets();
+    }
+};
+
+blcg.Config = Class.create();
+blcg.Config.prototype = {
     initialize: function(formEl, rendererTargetId)
     {
         this.formEl = formEl;
@@ -337,13 +446,16 @@ blcg.Renderer.Config.prototype = {
         this.rendererTargetId = rendererTargetId;
     },
     
-    insertRenderer: function()
+    insertParams: function()
     {
         var rendererOptionsForm = new varienForm(this.formEl);
+        
         if (!rendererOptionsForm.validator
-            || (rendererOptionsForm.validator && rendererOptionsForm.validator.validate())) {
+            || (rendererOptionsForm.validator
+                && rendererOptionsForm.validator.validate())) {
             var formElements = [];
             var i = 0;
+            
             Form.getElements($(this.formEl)).each(function(e) {
                 if(!e.hasClassName('skip-submit')) {
                     formElements[i] = e;
@@ -372,100 +484,197 @@ blcg.Renderer.Config.prototype = {
         var target = $(this.rendererTargetId);
         target.value = content;
     }
+};
+
+if (typeof(blcg.Renderer) == 'undefined') {
+    blcg.Renderer = {};
 }
 
-blcg.Attribute = {};
-blcg.Attribute.Select = Class.create();
-blcg.Attribute.Select.prototype = {
-    initialize: function(select, attributesConfig, renderersConfig, configButtonId, rendererTargetId, configUrl, editableConfig)
+blcg.Renderer.Config = Class.create(blcg.Config);
+
+blcg.Renderer.Select = Class.create();
+blcg.Renderer.Select.prototype = {
+    initialize: function(select, renderersConfig, configButtonId, rendererTargetId, configUrl)
     {
         this.select = $(select);
         this.configUrl = configUrl;
+        this.configButton = $(configButtonId);
+        this.renderersParams = $H({});
+        this.rendererTargetId = rendererTargetId;
         
-        this.attributesConfig = $H({});
-        $A(attributesConfig).each(function(attribute){
-            if (attribute.code) {
-                this.attributesConfig[attribute.code] = Object.extend({
-                    code: '',
-                    rendererCode: '',
-                    editableValues: false
-                }, attribute);
-            }
-        }.bind(this));
+        if (this.configButton) {
+            this.configButton.hide();
+        }
         
+        this.initRenderersConfig(renderersConfig);
+        this.initStartValue();
+        this.initValueEvents();
+        this.onValueChange();
+    },
+    
+    initRenderersConfig: function(renderersConfig)
+    {
         this.renderersConfig = $H({});
         $A(renderersConfig).each(function(renderer){
             if (renderer.code) {
-                this.renderersConfig[renderer.code] = Object.extend({
+                this.renderersConfig.set(renderer.code, Object.extend({
                     code: '',
                     isCustomizable: false
-                }, renderer);
+                }, renderer));
             }
         }.bind(this));
-        this.renderersParams = $H({});
+    },
+    
+    initStartValue: function()
+    {    
+        var code = $F(this.select);
+        if (code && this.renderersConfig.get(code)) {
+            this.currentRenderer = code;
+            this.renderersParams.set(code, $F(this.rendererTargetId));
+        } else {
+            this.currentRenderer = null;
+            $(this.rendererTargetId).value = '';
+        }
+    },
+    
+    initValueEvents: function()
+    {
+        if (this.select && (this.select.tagName.toUpperCase() == 'SELECT')) {
+            this.select.observe('change', this.onValueChange.bind(this));
+        }
+    },
+    
+    bindConfigButton: function(buttonId)
+    {
+        this.configButton = $(buttonId);
+        this.onValueChange();
+    },
+    
+    enableConfigButton: function(code, url, windowConfig)
+    {   
+        if (this.configButton) {
+            this.configButton.show();
+            this.configButton.stopObserving('click');
+            this.configButton.observe('click', function(){ 
+                blcg.Tools.openDialogFromPost(url, {
+                  'code': code,
+                  'renderer_target_id': this.rendererTargetId,
+                  'params': $F(this.rendererTargetId)
+                }, windowConfig);
+            }.bind(this));
+        }
+    },
+    
+    disableConfigButton: function()
+    {
+        if (this.configButton) {
+            this.configButton.stopObserving('click');
+            this.configButton.hide();
+        }
+    },
+    
+    onValueChange: function()
+    {
+        var code = $F(this.select);
         
+        if (code && this.renderersConfig.get(code)) {
+            var renderer = this.renderersConfig.get(code);
+            
+            if (renderer.isCustomizable) {
+               if (this.currentRenderer) {
+                    this.renderersParams.set(this.currentRenderer, $F(this.rendererTargetId));
+                }
+                if (this.renderersParams.get(code)) {
+                    $(this.rendererTargetId).value = this.renderersParams.get(code);
+                } else {
+                    $(this.rendererTargetId).value = '';
+                }
+                this.enableConfigButton(renderer.code, this.configUrl, renderer.windowConfig);
+            } else {
+                this.disableConfigButton();
+            }
+            
+            this.currentRenderer = code;
+        } else {
+            if (this.currentRenderer) {
+                this.renderersParams.set(this.currentRenderer, $F(this.rendererTargetId));
+            }
+            $(this.rendererTargetId).value = '';
+            this.disableConfigButton();
+            this.currentRenderer = '';
+        }
+    }
+};
+
+if (typeof(blcg.Renderer.Collection) == 'undefined') {
+    blcg.Renderer.Collection = {};
+}
+if (typeof(blcg.Renderer.Attribute) == 'undefined') {
+    blcg.Renderer.Attribute = {};
+}
+
+blcg.Renderer.Collection.Select = Class.create(blcg.Renderer.Select);
+blcg.Renderer.Attribute.Select = Class.create(blcg.Renderer.Select, {
+    initialize: function($super, select, attributesConfig, renderersConfig, configButtonId, rendererTargetId, configUrl, editableConfig)
+    {
+        this.initAttributesConfig(attributesConfig);
+        this.initEditableConfig(editableConfig);
+        $super(select, renderersConfig, configButtonId, rendererTargetId, configUrl);
+            
+        var code = $F(this.select);
+        if (code && this.attributesConfig.get(code)) {
+            this.currentAttribute = code;
+            this.renderersParams.get(code, $F(this.rendererTargetId));
+        } else {
+            this.currentAttribute = null;
+            $(this.rendererTargetId).value = '';
+        }
+    },
+    
+    initAttributesConfig: function(attributesConfig)
+    {
+        this.attributesConfig = $H({});
+        $A(attributesConfig).each(function(attribute){
+            if (attribute.code) {
+                this.attributesConfig.set(attribute.code, Object.extend({
+                    code: '',
+                    rendererCode: '',
+                    editableValues: false
+                }, attribute));
+            }
+        }.bind(this));
+    },
+    
+    initEditableConfig: function(editableConfig)
+    {
         this.editableConfig = Object.extend({
             'editableContainerId': false,
             'editableCheckboxId': false,
             'yesMessageText': '',
             'noMessageText': ''
         }, editableConfig);
-        
-        this.configButton = $(configButtonId);
-        this.configButton.hide();
-        this.rendererTargetId = rendererTargetId;
-        
+    },
+    
+    initStartValue: function()
+    {
         var code = $F(this.select);
-        if (code && this.attributesConfig[code]) {
+        if (code && this.attributesConfig.get(code)) {
             this.currentAttribute = code;
-            this.renderersParams[code] = $F(this.rendererTargetId);
+            this.renderersParams.set(code, $F(this.rendererTargetId));
         } else {
             this.currentAttribute = null;
             $(this.rendererTargetId).value = '';
         }
-        
-        this.onAttributeChange();
-        this.select.observe('change', this.onAttributeChange.bind(this));
-    },
-    
-    enableConfigButton: function(code, rendererCode, url, windowConfig)
-    {
-        if (this.currentAttribute) {
-            this.renderersParams[this.currentAttribute] = $F(this.rendererTargetId);
-        }
-        if (this.renderersParams[code]) {
-            $(this.rendererTargetId).value = this.renderersParams[code];
-        } else {
-            $(this.rendererTargetId).value = '';
-        }
-        
-        this.configButton.show();
-        this.configButton.stopObserving('click');
-        this.configButton.observe('click', function(){ 
-            blcg.Tools.openDialogFromPost(url, {
-              'code': rendererCode,
-              'renderer_target_id':  this.rendererTargetId,
-              'params': $F(this.rendererTargetId)
-            }, windowConfig);
-        }.bind(this));
-    },
-    
-    disableConfigButton: function()
-    {
-        if (this.currentAttribute) {
-            this.renderersParams[this.currentAttribute] = $F(this.rendererTargetId);
-        }
-        $(this.rendererTargetId).value = '';
-        this.configButton.stopObserving('click');
-        this.configButton.hide();
     },
     
     updateEditableConfig: function(code)
     {
         var isEditable = false;
-        if (this.currentAttribute) {
-            isEditable = this.attributesConfig[this.currentAttribute].editableValues;
+        
+        if (this.currentAttribute && this.attributesConfig.get(this.currentAttribute)) {
+            isEditable = this.attributesConfig.get(this.currentAttribute).editableValues;
         }
+        
         if (this.editableConfig.editableContainerId) {
             var container = $(this.editableConfig.editableContainerId);
             if (container) {
@@ -482,30 +691,51 @@ blcg.Attribute.Select.prototype = {
         }
     },
     
-    onAttributeChange: function()
+    onValueChange: function()
     {
         var code = $F(this.select);
         
-        if (code && this.attributesConfig[code]) {
-            var attribute = this.attributesConfig[code];
-            var renderer  = (attribute.rendererCode ? this.renderersConfig[attribute.rendererCode] : null);
-            if (renderer && renderer.isCustomizable) { 
-                this.enableConfigButton(attribute.code, renderer.code, this.configUrl, renderer.windowConfig);
+        if (code && this.attributesConfig.get(code)) {
+            var attribute = this.attributesConfig.get(code);
+            var renderer  = (attribute.rendererCode ? this.renderersConfig.get(attribute.rendererCode) : null);
+            
+            if (renderer && renderer.isCustomizable) {
+               if (this.currentAttribute) {
+                    this.renderersParams.set(this.currentAttribute, $F(this.rendererTargetId));
+                }
+                if (this.renderersParams.get(code)) {
+                    $(this.rendererTargetId).value = this.renderersParams.get(code);
+                } else {
+                    $(this.rendererTargetId).value = '';
+                } 
+                this.enableConfigButton(renderer.code, this.configUrl, renderer.windowConfig);
             } else {
                 this.disableConfigButton();
             }
+            
             this.currentAttribute = code;
         } else {
+            if (this.currentAttribute) {
+                this.renderersParams.set(this.currentAttribute, $F(this.rendererTargetId));
+            }
+            $(this.rendererTargetId).value = '';
             this.disableConfigButton();
             this.currentAttribute = '';
         }
         
         this.updateEditableConfig();
     }
+});
+
+if (typeof(blcg.Form) == 'undefined') {
+    blcg.Form = {};
+}
+if (typeof(blcg.Form.Element) == 'undefined') {
+    blcg.Form.Element = {};
 }
 
-blcg.FormElementDependenceController = Class.create();
-blcg.FormElementDependenceController.prototype = {
+blcg.Form.Element.DependenceController = Class.create();
+blcg.Form.Element.DependenceController.prototype = {
     initialize : function (elementsMap, config)
     {
         // Elements states (enabled or disabled)
@@ -570,7 +800,7 @@ blcg.FormElementDependenceController.prototype = {
             }.bind(this));
         }
     }
-}
+};
 
 /*
 * Table drag'n'drop
@@ -609,8 +839,10 @@ blcg.TableDnd.prototype = {
         
         this.makeDraggable(table);
         
-        Event.observe(document, 'mousemove', function(event){ this.onMouseMove(event); }.bind(this));
-        Event.observe(document, 'mouseup', function(event){ this.onMouseUp(event); }.bind(this));
+        var onMouseMoveHandler = this.onMouseMove.bind(this);
+        var onMouseUpHandler = this.onMouseUp.bind(this);
+        blcgEventsManager.addUniqueHandler('blcg-dnd-'+$(table).identify()+'-mouse-move', 'prototype', document, 'mousemove', onMouseMoveHandler);
+        blcgEventsManager.addUniqueHandler('blcg-dnd-'+$(table).identify()+'-mouse-up', 'prototype', document, 'mouseup', onMouseUpHandler);
     },
     
     makeDraggable: function(table)
@@ -626,6 +858,7 @@ blcg.TableDnd.prototype = {
                     this.currentTable = table;
                     this.mouseOffset  = this.getMouseOffset(cell, event);
                     if (this.tableDndConfig.onDragStart) {
+                        event.preventDefault(); 
                         // Call the onDrop method if there is one
                         this.tableDndConfig.onDragStart(table, cell);
                     }
@@ -643,6 +876,7 @@ blcg.TableDnd.prototype = {
                             this.currentTable = table;
                             this.mouseOffset  = this.getMouseOffset(row, event);
                             if (this.tableDndConfig.onDragStart) {
+                                event.preventDefault(); 
                                 // Call the onDrop method if there is one
                                 this.tableDndConfig.onDragStart(table, row);
                             }
@@ -668,6 +902,7 @@ blcg.TableDnd.prototype = {
                     this.currentTable = table;
                     this.mouseOffset  = this.getMouseOffset(cell, event);
                     if (this.tableDndConfig.onDragStart) {
+                        event.preventDefault(); 
                         // Call the onDrop method if there is one
                         this.tableDndConfig.onDragStart(table, cell);
                     }
@@ -683,6 +918,7 @@ blcg.TableDnd.prototype = {
                         this.currentTable = table;
                         this.mouseOffset  = this.getMouseOffset(row, event);
                         if (this.tableDndConfig.onDragStart) {
+                            event.preventDefault(); 
                             // Call the onDrop method if there is one
                             this.tableDndConfig.onDragStart(table, row);
                         }
@@ -867,10 +1103,14 @@ blcg.TableDnd.prototype = {
             this.currentTable = null; // Let go of the table too
         }
     }
+};
+
+if (typeof(blcg.Grid) == 'undefined') {
+    blcg.Grid = {};
 }
 
-blcg.CustomGridExport = Class.create();
-blcg.CustomGridExport.prototype = {
+blcg.Grid.Export = Class.create();
+blcg.Grid.Export.prototype = {
     initialize: function (containerId, errorTexts, additional)
     {
         this.containerId  = containerId;
@@ -890,12 +1130,8 @@ blcg.CustomGridExport.prototype = {
         
         this.customSizeInput.hide();
         this.customSizeInput.disabled = true;
-        this.customSizeInput.observe('change', function(){
-            this.verifyInput(this.customSizeInput, '');
-        }.bind(this));
-        this.fromResultInput.observe('change', function(){
-            this.verifyInput(this.fromResultInput, '1');
-        }.bind(this));
+        this.customSizeInput.observe('change', function(){ this.verifyInput(this.customSizeInput, '');  }.bind(this));
+        this.fromResultInput.observe('change', function(){ this.verifyInput(this.fromResultInput, '1'); }.bind(this));
         
         this.sizeSelect.observe('change', function(){
             if ($F(this.sizeSelect) != '') {
@@ -934,58 +1170,46 @@ blcg.CustomGridExport.prototype = {
             }
             return false;
         }
-        return blcg.Tools.submitContainerValues(this.container, $F(this.formatSelect), this.additional, 'GET');        
+        return blcg.Tools.submitContainerValues(this.container, $F(this.formatSelect), this.additional, 'POST');
     }
-}
+};
 
-blcg.CustomGridConfig = Class.create();
-blcg.CustomGridConfig.prototype = {
+blcg.Grid.Config = Class.create();
+blcg.Grid.Config.prototype = {
     initialize: function(containerId, saveUrl, rowClassName, orderInputId, newRowId, newRowClassNames, newRowColumns, config)
     {
-        // Hash of columns by column ID (store corresponding table rows)
         this.columns = $H({});
-        // Array of all columns IDs
         this.columnsIds = $A({});
-        // Hash of visibility checkboxes by column ID
         this.checkboxes = $H({});
-        // Hash of order inputs by column ID
+        this.filterCheckboxes = $H({});
         this.orderInputs = $H({});
-        // Array of columns IDs having their visibility checkbox checked
         this.checkedValues = $A({});
-        // Next new column ID
+        this.checkedFilterValues = $A({});
         this.nextId = 0;
-        
-        // Container ID
+            
         this.containerId = containerId;
-        // Save grid URL
         this.saveUrl = saveUrl;
-        // Class name used to initialize existing columns rows
         this.rowClassName = rowClassName; 
-        // ID of the inputs which contain columns orders
         this.orderInputId = orderInputId;
-        // Template for new column's table row's ID
         this.newRowId = newRowId;
-        // Templates for new column's table row's class names
         this.newRowClassNames = $A(newRowClassNames);
-        // Array of templates for new column's table row's cells
         this.newRowColumns = $A(newRowColumns);
+        
         for (var i=0, l=this.newRowColumns.length; i<l; ++i) {
-            // These are hashes with "template" and "class names" for each cell
             this.newRowColumns[i] = $H(this.newRowColumns[i]);
         }
         
         this.config = Object.extend({
-            idTemplate: '{{id}}', // String to replace by new IDs in new rows templates
-            jsIdTemplate: '{{js_id}}', // String to replace by new JS ids in new rows templates
-            orderTemplate: '{{order}}', // String to replace by new orders in new rows templates
-            errorText: '', // Error message to display if no checkboxes are checked on submit
-            maxOrder: 0, // The  maximum order for existing columns
-            orderPitch: 1, // The number to add to maximum order to get new columns orders
-            useDnd: false // Flag to tell if we should use drag'n'drop
+            idTemplate: '{{id}}',
+            jsIdTemplate: '{{js_id}}',
+            orderTemplate: '{{order}}',
+            errorText: '',
+            maxOrder: 0,
+            orderPitch: 1,
+            useDnd: false
         }, config || {});
-        this.config.originalMaxOrder = this.config.maxOrder;
         
-        // Make regexes from ID and order template
+        this.config.originalMaxOrder = this.config.maxOrder;
         this.config.idRegex = new RegExp(this.config.idTemplate, 'g');
         this.config.jsIdRegex = new RegExp(this.config.jsIdTemplate, 'g');
         this.config.orderRegex = new RegExp(this.config.orderTemplate, 'g');
@@ -1016,10 +1240,11 @@ blcg.CustomGridConfig.prototype = {
     
     initElements: function()
     {
-        this.container = $(this.containerId);
-        this.table     = $(this.containerId + '-table');
-        this.rows      = $(this.containerId + '-table-rows');
-        this.count     = $(this.containerId + '-count');
+        this.container   = $(this.containerId);
+        this.table       = $(this.containerId + '-table');
+        this.rows        = $(this.containerId + '-table-rows');
+        this.count       = $(this.containerId + '-count');
+        this.filterCount = $(this.containerId + '-filter-count');
         
         if (this.config.useDnd) {
             // Drag'n'drop if needed
@@ -1127,27 +1352,11 @@ blcg.CustomGridConfig.prototype = {
         this.columns[nextId] = row;
         this.columnsIds.push(nextId);
         
-        row.getElementsBySelector('.visible-checkbox').each(function(cb){
-            cb.observe('click', function(){
-                if (cb.checked) {
-                    this.checkedValues.push(nextId);
-                } else {
-                    var i = this.checkedValues.indexOf(nextId);
-                    if (i != -1) {
-                        this.checkedValues.splice(i, 1);
-                    }
-                } 
-                this.updateCount(); 
-            }.bind(this));
-            
-            this.checkboxes[nextId] = cb;
-            
-            if (cb.checked) {
-                this.checkedValues.push(nextId);
-            }
-        }.bind(this));
-        this.orderInputs[nextId] = $(this.orderInputId.replace(this.config.idRegex, nextId));
+        var visibleCb = row.getElementsBySelector('.visible-checkbox').first();
+        var filterCb  = row.getElementsBySelector('.filter-only-checkbox').first();
+        this.prepareColumnCheckboxes(nextId, visibleCb, filterCb);
         
+        this.orderInputs[nextId] = $(this.orderInputId.replace(this.config.idRegex, nextId));
         this.updateCount();
         this.redecorateColumns();
         
@@ -1178,41 +1387,102 @@ blcg.CustomGridConfig.prototype = {
         }.bind(this));
     },
     
+    onVisibleCheckboxClick: function(visibleCb, filterCb, columnId, fromFilter)
+    {
+        if (visibleCb.checked) {
+            this.checkedValues.push(columnId);
+        } else {
+            var i = this.checkedValues.indexOf(columnId);
+            
+            if (i != -1) {
+                this.checkedValues.splice(i, 1);
+            }
+            
+            if (!fromFilter && filterCb) {
+                filterCb.checked = false;
+                this.onFilterCheckboxClick(filterCb, visibleCb, columnId, true);
+            }
+        }
+        if (!fromFilter) {
+            this.updateCount();
+        }
+    },
+    
+    onFilterCheckboxClick: function(filterCb, visibleCb, columnId, fromVisible)
+    {
+        if (filterCb.checked) {
+            this.checkedFilterValues.push(columnId);
+            
+            if (!fromVisible) {
+                visibleCb.checked = true;
+                this.onVisibleCheckboxClick(visibleCb, filterCb, columnId, true);
+            }
+        } else {
+            var i = this.checkedFilterValues.indexOf(columnId);
+            
+            if (i != -1) {
+                this.checkedFilterValues.splice(i, 1);
+            }
+        }
+        if (!fromVisible) {
+            this.updateCount();
+        }
+    },
+    
+    prepareColumnCheckboxes: function(columnId, visibleCb, filterCb)
+    {
+        if (visibleCb) {
+            this.checkboxes[columnId] = visibleCb;
+            
+            visibleCb.observe('click', function(){
+                this.onVisibleCheckboxClick(visibleCb, filterCb, columnId);
+            }.bind(this));
+            
+            if (visibleCb.checked) {
+                this.checkedValues.push(columnId);
+            }
+        }
+        if (filterCb) {
+            this.filterCheckboxes[columnId] = filterCb;
+            
+            if (visibleCb) {
+                filterCb.observe('click', function(){
+                    this.onFilterCheckboxClick(filterCb, visibleCb, columnId);
+                }.bind(this));
+            }
+            
+            if (filterCb.checked) {
+                this.checkedFilterValues.push(columnId);
+            }
+        }
+    },
+    
     initCheckboxes: function()
     {
         this.columnsIds.each(function(columnId){
             var column = this.columns[columnId];
-            column.getElementsBySelector('.visible-checkbox').each(function(cb){
-                cb.observe('click', function(){
-                    if (cb.checked) {
-                        this.checkedValues.push(columnId);
-                    } else {
-                        var i = this.checkedValues.indexOf(columnId);
-                        if (i != -1) {
-                            this.checkedValues.splice(i, 1);
-                        }
-                    } 
-                    this.updateCount(); 
-                }.bind(this));
-                
-                this.checkboxes[columnId] = cb;
-                
-                if (cb.checked) {
-                    this.checkedValues.push(columnId);
-                }
-            }.bind(this));
+            var visibleCb = column.getElementsBySelector('.visible-checkbox').first();
+            var filterCb  = column.getElementsBySelector('.filter-only-checkbox').first();
+            this.prepareColumnCheckboxes(columnId, visibleCb, filterCb);
         }.bind(this));
     },
     
     updateCount: function()
     {
         this.checkedValues = this.checkedValues.uniq();
+        this.checkedFilterValues = this.checkedFilterValues.uniq();
         this.count.update(this.checkedValues.size());
+        this.filterCount.update(this.checkedFilterValues.size());
     },
     
     selectAll: function()
     {
-        this.columnsIds.each(function(columnId){ this.checkboxes[columnId].checked = true; }.bind(this));
+        this.columnsIds.each(function(columnId){
+            if (!!this.checkboxes[columnId]) {
+                this.checkboxes[columnId].checked = true;
+            }
+        }.bind(this));
+        
         this.checkedValues = this.columnsIds;
         this.updateCount();
         return false;
@@ -1220,8 +1490,17 @@ blcg.CustomGridConfig.prototype = {
     
     unselectAll: function()
     {
-        this.columnsIds.each(function(columnId){ this.checkboxes[columnId].checked = false; }.bind(this));
+        this.columnsIds.each(function(columnId){
+            if (!!this.checkboxes[columnId]) {
+                this.checkboxes[columnId].checked = false;
+            }
+            if (!!this.filterCheckboxes[columnId]) {
+                this.filterCheckboxes[columnId].checked = false;
+            }
+        }.bind(this));
+        
         this.checkedValues = $A({});
+        this.checkedFilterValues = $A({});
         this.updateCount();
         return false;
     },
@@ -1229,36 +1508,193 @@ blcg.CustomGridConfig.prototype = {
     deleteColumn: function(columnId)
     {
         columnId = '' + columnId;
-        var i = this.columnsIds.indexOf(columnId);
+        var i = this.columnsIds.indexOf(columnId), j;
+        
         if (i != -1) {
             this.columns[columnId].remove();
             this.columnsIds.splice(i, 1);
             this.columns.unset(columnId);
             this.checkboxes.unset(columnId);
-            var j = this.checkedValues.indexOf(columnId);
-            if (j != -1) {
+            this.filterCheckboxes.unset(columnId);
+            
+            if ((j = this.checkedValues.indexOf(columnId)) != -1) {
                 this.checkedValues.splice(j, 1);
-                this.updateCount();
             }
+            if ((j = this.checkedFilterValues.indexOf(columnId)) != -1) {
+                this.checkedFilterValues.splice(j, 1);
+            }
+            
+            this.updateCount();
             this.redecorateColumns();
         }
     },
     
     saveGrid: function()
     {
-        if (this.checkedValues.size() == 0) {
+        if ((this.checkedValues.size() == 0)
+            || (this.checkedValues.size() == this.checkedFilterValues.size())) {
             if (this.config.errorText != '') {
                 alert(this.config.errorText);
             }
             return false;
         }
-        
         return blcg.Tools.submitContainerValues(this.container, this.saveUrl);
     }
-}
+};
 
-blcg.GridEditor = Class.create();
-blcg.GridEditor.prototype = {
+blcg.Grid.ActionsPinner = Class.create();
+blcg.Grid.ActionsPinner.prototype = {
+    initialize: function(containerId, gridTableId)
+    {
+        this.container   = $(containerId);
+        this.gridTable   = $(gridTableId);
+        this.pinnedBlock = this.container.select('.blcg-grid-pinnable-actions-block').first();
+        
+        if (!this.pinnedBlock || this.pinnedBlock.empty()) {
+            return;
+        }
+        
+        this.pinnedPlaceholder = this.container.select('.blcg-grid-pinned-actions-block-placeholder').first();
+        this.isVisible   = true;
+        this.isPinned    = false;
+        this.isWorking   = false;
+        this.pinPosition = 0;
+        this.pinnedPartHeight = 0;
+        
+        if (this.pinnedBlock && this.pinnedPlaceholder) {
+            var onScrollHandler = this.onScroll.bind(this);
+            blcgEventsManager.addUniqueHandler('blcg-gap-'+containerId+'-load',   'prototype', window, 'load',   onScrollHandler);
+            blcgEventsManager.addUniqueHandler('blcg-gap-'+containerId+'-scroll', 'prototype', window, 'scroll', onScrollHandler);
+            blcgEventsManager.addUniqueHandler('blcg-gap-'+containerId+'-resize', 'prototype', window, 'resize', onScrollHandler);
+            
+            var onTabShowHandler = function(tab){ this.onTabShow(tab.tab); }.bind(this);
+            var onTabHideHandler = function(tab){ this.onTabHide(tab.tab); }.bind(this);
+            blcgEventsManager.addUniqueHandler('blcg-gap-'+containerId+'-tab-show', 'varien', null, 'showTab', onTabShowHandler);
+            blcgEventsManager.addUniqueHandler('blcg-gap-'+containerId+'-tab-hide', 'varien', null, 'hideTab', onTabHideHandler);
+        }
+        
+        this.onScroll();
+    },
+    
+    getFixedHeaderHeight: function()
+    {
+        var fixedHeader = $$('.content-header-floating').first();
+        return (fixedHeader && fixedHeader.visible() ? fixedHeader.getHeight() : 0);
+    },
+    
+    pin: function()
+    {
+        if (this.isPinned || this.isWorking) {
+            this.checkPosition();
+            return;
+        }
+        
+        this.isWorking   = true;
+        this.isPinned    = true;
+        this.pinPosition = this.getFixedHeaderHeight();
+        
+        if (this.pinnedBlock) {
+            this.pinnedBlock.select('.blcg-additional-filters-table').invoke('addClassName', 'no-display');
+            
+            this.pinnedBlock.setStyle({
+                'position': 'fixed',
+                'left': 0,
+                'top': this.pinPosition + 'px',
+                'width': '100%'
+            });
+            
+            this.pinnedBlock.addClassName('blcg-grid-pinned-actions-block'); 
+            this.pinnedPartHeight = this.pinnedBlock.getHeight();
+        }
+        
+        this.pinnedPlaceholder.setStyle({'height': this.pinnedPartHeight + 'px'});
+        this.isWorking = false;
+    },
+    
+    unPin: function()
+    {
+        if (!this.isPinned || this.isWorking) {
+            return;
+        }
+        
+        this.isWorking   = true;
+        this.isPinned    = false;
+        this.pinPosition = 0;
+        this.pinnedPartHeight = 0;
+        
+        if (this.pinnedBlock) {
+            this.pinnedBlock.select('.blcg-additional-filters-table').invoke('removeClassName', 'no-display');
+            this.pinnedBlock.removeClassName('blcg-grid-pinned-actions-block');
+            this.pinnedPlaceholder.setStyle({'height': '0'});
+            this.pinnedBlock.writeAttribute('style', '');
+        }
+        
+        this.isWorking = false;
+    },
+    
+    onTabShow: function(tab)
+    {
+        if (!this.isVisible
+            && (tab = $(tab.id + '_content'))
+            && this.container.descendantOf(tab)) {
+            this.isVisible = true;
+            this.onScroll();
+        }
+    },
+
+    onTabHide: function(tab)
+    {
+        if (this.isVisible
+            && (tab = $(tab.id + '_content'))
+            && this.container.descendantOf(tab)) {
+            this.isVisible = false;
+            this.unPin();
+        }
+    },
+    
+    checkPosition: function()
+    {
+        if (!this.isPinned || this.isWorking) {
+            return;
+        }
+        
+        this.isWorking  = true;
+        this.pinnedPartHeight = this.pinnedBlock.getHeight();
+        var newPosition = this.getFixedHeaderHeight();
+        
+        if (newPosition != this.pinPosition) {
+            this.pinPosition = newPosition;
+            this.pinnedBlock.setStyle({'top': newPosition + 'px'});
+        }
+        
+        this.isWorking = false;
+    },
+    
+    onScroll: function()
+    {
+        if (this.isWorking || !this.isVisible) {
+            return;
+        }
+        
+        var tableHeight = this.gridTable.getHeight();
+        
+        if (tableHeight > 0) {
+            var tableTop = this.gridTable.viewportOffset().top,
+                headerHeight = this.getFixedHeaderHeight();
+            
+            if (tableTop+tableHeight+this.pinnedPartHeight < headerHeight) {
+                this.unPin();
+            } else if (tableTop-headerHeight-this.pinnedPartHeight < 0) {
+                this.pin();
+            } else {
+                this.unPin();
+            }
+        }
+    }
+};
+
+blcg.Grid.Editor = Class.create();
+blcg.Grid.Editor.prototype = {
     initialize: function(tableId, cells, rowsIds, additionalParams, globalParams, errorMessages)
     {
         this.tableId = tableId;
@@ -1266,9 +1702,10 @@ blcg.GridEditor.prototype = {
         this.cells   = $A(cells);
         this.rowsIds = $A(rowsIds);
         this.additionalParams = (Object.isArray(additionalParams) ? $H({}) : $H(additionalParams));
-        this.globalParams     = (Object.isArray(globalParams) ? $H({}) : $H(globalParams));
-        this.errorMessages    = $H(errorMessages);
+        this.globalParams  = (Object.isArray(globalParams) ? $H({}) : $H(globalParams));
+        this.errorMessages = $H(errorMessages);
         this.editWindow = null;
+        this.isRequestRunning = false;
         
         if ((!this.table)
             || (this.cells.length == 0) 
@@ -1355,7 +1792,7 @@ blcg.GridEditor.prototype = {
     getCellOverlay: function(cell)
     {
         var overlay = $(this.getCellOverlayId(cell));
-        return (overlay ? overlay : this.createCellOverlay(cell));       
+        return (overlay ? overlay : this.createCellOverlay(cell));
     },
     
     positionCellOverlay: function(cell, overlay, mustShow)
@@ -1388,7 +1825,8 @@ blcg.GridEditor.prototype = {
     fillCellOverlay: function(cell, overlay)
     {
         overlay = (overlay ? overlay : this.getCellOverlay(cell));
-               
+        
+        // @todo to make it (even) "cleaner", all those classes should be wrapped in a dedicated parameter
         if (cell.hasClassName('blcg-column-editor-editing')) {
             if (!overlay.hasClassName('blcg-column-editor-overlay-container-editing')) {
                 overlay.innerHTML = '';
@@ -1511,7 +1949,7 @@ blcg.GridEditor.prototype = {
         this.additionalParams.each(function(pair){
             params.set(this.parseCellParamKey(config.additional_key, pair.key), pair.value);
         }.bind(this));
-
+        
         // Additional column parameters
         if (!Object.isArray(config.column_params)) {
             $H(config.column_params).each(function(pair){
@@ -1527,7 +1965,7 @@ blcg.GridEditor.prototype = {
     
     parseHashDimensions: function(hash, dimensions)
     {
-        var vpDimensions = document.viewport.getDimensions();        
+        var vpDimensions = document.viewport.getDimensions();
         
         $H(dimensions).each(function(pair){
             if (hash.get(pair.key) != '') {
@@ -1556,16 +1994,20 @@ blcg.GridEditor.prototype = {
     
     editCell: function(cell)
     {
+        if (this.isRequestRunning) {
+            return;
+        }
         if (!this.compareCells(this.editedCell, cell)) {
             this.cancelEdit();
-            this.editedCell = cell;            
+            this.editedCell = cell;
             var cellConfig  = this.cellsConfigs[cell.identify()];
             var editUrl     = cellConfig.edit_url;
             var editParams  = this.getCellParamsHash(this.editedCell);
             
             if (cellConfig.in_grid) {
                 var editor = this;
-                editUrl += editUrl.match(new RegExp('\\?')) ? '&isAjax=true' : '?isAjax=true';
+                editUrl += (editUrl.match(new RegExp('\\?')) ? '&isAjax=true' : '?isAjax=true');
+                this.isRequestRunning = true;
                 
                 new Ajax.Request(editUrl, {
                     method: 'post',
@@ -1600,22 +2042,56 @@ blcg.GridEditor.prototype = {
                                         e.hide();
                                         cell.addClassName('blcg-column-editor-editing-required');
                                     });
+                                    
+                                    // add Editor support for Enter / Escape keys
+                                    var formInputs = $(form).select('.select, .required-entry, .input-text');
+                                    
+                                    formInputs.each(function(input){
+                                        input.observe('keydown', function(e){
+                                            switch (e.keyCode) {
+                                                case Event.KEY_RETURN: // Enter completes edit
+                                                    e.preventDefault();
+                                                    editor.validateEdit();
+                                                    break;
+                                                
+                                                case Event.KEY_ESC: // Escape cancels edit
+                                                    e.preventDefault();
+                                                    editor.cancelEdit();
+                                                    break;
+                                            }
+                                        });
+                                    });
+                                    
+                                    // automatically focus Editor when commencing edit
+                                    formInputs.first().activate();
                                 }
                             } else {
                                 editor.cancelEdit();
-                                if (transport.responseText != '') {
+                                
+                                if (!transport.responseText.isJSON()
+                                    && (transport.responseText != '')) {
                                     alert(transport.responseText);
+                                } else {
+                                    // @todo generic error message
                                 }
                             }
                         } catch(e) {
                             editor.cancelEdit();
-                            if (transport.responseText != '') {
+                            
+                            if (!transport.responseText.isJSON()
+                                && (transport.responseText != '')) {
                                 alert(transport.responseText);
+                            } else {
+                                // @todo generic error message
                             }
                         }
+                        
+                        editor.isRequestRunning = false;
                     },
                     onFailure: function(transport){
                         editor.cancelEdit();
+                        editor.isRequestRunning = false;
+                        
                         if (editor.errorMessages.get('edit_request_failure')) {
                             alert(editor.errorMessages.get('edit_request_failure'));
                         }
@@ -1623,6 +2099,7 @@ blcg.GridEditor.prototype = {
                 });
             } else {
                 editUrl += (editUrl.match(new RegExp('\\?')) ? '&' : '?') + editParams.toQueryString();
+                
                 var windowConfig = $H(cellConfig.window);
                 windowConfig.set('closeCallback', function(){ this.cancelEdit(true); return true; }.bind(this));
                 windowConfig = this.parseHashDimensions(windowConfig, {
@@ -1631,6 +2108,7 @@ blcg.GridEditor.prototype = {
                     'minWidth': 'width',
                     'minHeight': 'height'
                 });
+                
                 this.editWindow = blcg.Tools.openIframeDialog(editUrl, windowConfig.toObject(), true);
             }
         }
@@ -1638,6 +2116,9 @@ blcg.GridEditor.prototype = {
     
     validateEdit: function(formParams)
     {
+        if (this.isRequestRunning) {
+            return;
+        }
         if (this.editedCell) {
             var cell   = this.editedCell;
             var cellId = cell.identify();
@@ -1663,8 +2144,9 @@ blcg.GridEditor.prototype = {
             if (params && (params.values().length > 0)) {
                 params.update(this.getCellParamsHash(cell));
                 var saveUrl = cellConfig.save_url;
-                saveUrl += saveUrl.match(new RegExp('\\?')) ? '&isAjax=true' : '?isAjax=true';
-                var editor  = this;
+                saveUrl += (saveUrl.match(new RegExp('\\?')) ? '&isAjax=true' : '?isAjax=true');
+                var editor = this;
+                this.isRequestRunning = true;
                 
                 new Ajax.Request(saveUrl, {
                     method: 'post',
@@ -1696,19 +2178,31 @@ blcg.GridEditor.prototype = {
                                 }
                             } else {
                                 editor.cancelEdit();
-                                if (transport.responseText != '') {
+                                
+                                if (!transport.responseText.isJSON()
+                                    && (transport.responseText != '')) {
                                     alert(transport.responseText);
+                                } else {
+                                    // @todo generic error message
                                 }
                             }
                         } catch(e) {
                             editor.cancelEdit();
-                            if (transport.responseText != '') {
+                            
+                            if (!transport.responseText.isJSON()
+                                && (transport.responseText != '')) {
                                 alert(transport.responseText);
+                            } else {
+                                // @todo generic error message
                             }
                         }
+                        
+                        editor.isRequestRunning = false;
                     },
                     onFailure: function(transport){
                         editor.cancelEdit();
+                        editor.isRequestRunning = false;
+                        
                         if (editor.errorMessages.get('save_request_failure')) {
                             alert(editor.errorMessages.get('save_request_failure'));
                         }
@@ -1716,6 +2210,7 @@ blcg.GridEditor.prototype = {
                 });
             } else {
                 this.cancelEdit();
+                
                 if (this.errorMessages.get('save_no_params')) {
                     alert(this.errorMessages.get('save_no_params'));
                 }
@@ -1725,12 +2220,15 @@ blcg.GridEditor.prototype = {
     
     cancelEdit: function(fromDialog, errorMessage)
     {
+        if (this.isRequestRunning) {
+            return;
+        }
         if (this.editedCell) {
             if (this.hasPreviousValue) {
                 this.editedCell.innerHTML = this.previousValue;
                 this.hasPreviousValue = false;
             }
-
+            
             var cellConfig = this.cellsConfigs[this.editedCell.identify()];
             this.previousValue = null;
             this.editedCell.removeClassName('blcg-column-editor-editing');
@@ -1747,4 +2245,200 @@ blcg.GridEditor.prototype = {
             }
         }
     }
+};
+
+if (typeof(blcg.CustomColumn) == 'undefined') {
+    blcg.CustomColumn = {};
 }
+
+blcg.CustomColumn.List = Class.create();
+blcg.CustomColumn.List.prototype = {
+    initialize: function(wrapperId, config)
+    {
+        this.wrapper = $(wrapperId);
+        
+        this.config = Object.extend({
+            groupClass: 'blcg-custom-columns-group',
+            labelClass: 'blcg-custom-columns-group-label',
+            labelOnClass: 'blcg-custom-columns-group-label-on',
+            labelOffClass: 'blcg-custom-columns-group-label-off',
+            listClass: 'blcg-custom-columns-list',
+            buttonClass: 'blcg-custom-columns-column-button' 
+        }, config || {});
+        
+        this.initListToggles();
+        this.initButtonTooltips();
+    },
+    
+    initListToggles: function()
+    {
+        this.wrapper.getElementsBySelector('.'+this.config.labelClass).each(function(label){
+            label.observe('click', function(){
+                var list = label.next('.'+this.config.listClass);
+                if (list) {
+                    if (list.visible()) {
+                        list.hide();
+                        label.removeClassName(this.config.labelOnClass);
+                        label.addClassName(this.config.labelOffClass);
+                    } else {
+                        list.show();
+                        label.removeClassName(this.config.labelOffClass);
+                        label.addClassName(this.config.labelOnClass);
+                    }
+                }
+            }.bind(this));
+        }.bind(this));   
+    },
+    
+    initButtonTooltips: function()
+    {
+        this.wrapper.getElementsBySelector('.'+this.config.buttonClass).each(function(button){
+            var content = button.down();
+            if (content) {
+                new blcg.Tooltip(button, content);
+            }
+        }.bind(this));
+    }
+} 
+
+blcg.MessagesTabs = Class.create();
+blcg.MessagesTabs.prototype = {
+    initialize: function(wrapperId, types, config)
+    {
+        this.wrapper = $(wrapperId);
+        this.types = $A(types);
+        
+        this.config = Object.extend({
+            tabIdPrefix: 'blcg-messages-tab-',
+            countIdPrefix: 'blcg-messages-tab-count-',
+            wrapperIdPrefix: 'blcg-messages-list-wrapper-',
+            tabClass: 'blcg-messages-tab',
+            wrapperClass: 'blcg-messages-list-wrapper',
+            hiddenClass: 'no-display',
+            messageSelector: '.messages li li'
+        }, config || {});
+        
+        this.types.each(function(type){
+            $(this.config.tabIdPrefix + type).observe('click', this.toggleMessages.bind(this, type, false));
+        }.bind(this));
+    },
+    
+    hideMessages: function()
+    {
+        $$('.' + this.config.wrapperClass).invoke('addClassName', this.config.hiddenClass);
+    },
+    
+    showMessages: function(type)
+    {
+        this.hideMessages();
+        $(this.config.wrapperIdPrefix + type).removeClassName(this.config.hiddenClass);
+    },
+    
+    toggleMessages: function(type, closeOnly)
+    {
+        if ($(this.config.wrapperIdPrefix + type).hasClassName(this.config.hiddenClass)) {
+            if (!closeOnly) {
+                this.showMessages(type);
+            }
+        } else {
+            this.hideMessages();
+        }
+    },
+    
+    addMessages: function(wrapperId)
+    {
+        var newWrapper = $(wrapperId);
+        
+        this.types.each(function(type){
+            var mainWrapper = $(this.config.wrapperIdPrefix + type),
+                subWrapper  = newWrapper.select('.' + this.config.wrapperIdPrefix + type).first();
+            
+            if (subWrapper) {
+                mainWrapper.insert({top: subWrapper.down()});
+                var count = mainWrapper.select(this.config.messageSelector).size();
+                $(this.config.countIdPrefix + type).update('' + count);
+                
+                if (count > 0) {
+                    $(this.config.tabIdPrefix + type).removeClassName(this.config.hiddenClass);
+                } else {
+                    $(this.config.tabIdPrefix + type).addClassName(this.config.hiddenClass);
+                    this.toggleMessages(type, true);
+                }
+            }
+        }.bind(this));
+    }
+};
+
+blcg.CustomColumn.Form = Class.create(blcg.Config);
+
+blcg.CustomColumn.Config = Class.create();
+blcg.CustomColumn.Config.prototype = {
+    initialize: function(code, configButtonId, rendererTargetId, configUrl, windowConfig)
+    {
+        $(configButtonId).observe('click', function(){ 
+            blcg.Tools.openDialogFromPost(configUrl, {
+              'code': code,
+              'renderer_target_id': rendererTargetId,
+              'params': $F(rendererTargetId)
+            }, windowConfig);
+        });
+    }
+};
+
+blcg.CustomColumn.OptionsColor = Class.create();
+blcg.CustomColumn.OptionsColor.registerRowChange = function(childId, backgroundColor, textColor, onlyCell) {
+    var elm    = $(childId),
+        upElm  = null,
+        search = (!!onlyCell ? 'td' : 'tr');
+    
+    if (elm && (upElm = elm.up(search))) {
+        if (backgroundColor != '') {
+            upElm.setStyle({'backgroundColor': backgroundColor});
+        }
+        if (textColor != '') {
+            upElm.setStyle({'color': textColor});
+            
+            // Force color for links, as they certainly are given a specific one
+            upElm.getElementsBySelector('a').each(function(link){
+                link.setStyle({'color': textColor});
+            });
+        }
+    }
+};
+
+if (typeof(blcg.Filter) == 'undefined') {
+    blcg.Filter = {};
+}
+
+blcg.Filter.Categories = Class.create();
+blcg.Filter.Categories.prototype = {
+    initialize: function(inputId, buttonId, containerId, chooserUrl, paramName, windowConfig)
+    {
+        this.input        = $(inputId);
+        this.button       = $(buttonId);
+        this.container    = $(containerId);
+        this.chooserUrl   = chooserUrl;
+        this.paramName    = paramName;
+        this.window       = null;
+        this.windowConfig = windowConfig;
+        this.button.observe('click', function(){ this.openChooser(); }.bind(this));
+    },
+    
+    openChooser: function()
+    {
+        var ids = $F(this.input), chooserUrl = this.chooserUrl;
+        chooserUrl += (chooserUrl.match(new RegExp('\\?')) ? '&' : '?') + this.paramName + '=' + ids;
+        this.window = blcg.Tools.openIframeDialog(chooserUrl, this.windowConfig, true);
+    },
+    
+    applyChoice: function(ids)
+    {
+        if (this.window) {
+            ids = ids.split(',').uniq().without('', null);
+            this.input.value = ids.join(',');
+            ids.sort(function(a, b){ return (parseInt(a) > parseInt(b) ? 1 : (parseInt(a) < parseInt(b) ? -1 : 0)); });
+            this.container.update(ids.join(', '));
+            blcg.Tools.closeDialog(this.window);
+        }
+    }
+};

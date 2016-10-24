@@ -9,7 +9,7 @@
  *
  * @category   BL
  * @package    BL_CustomGrid
- * @copyright  Copyright (c) 2011 Benoît Leulliette <benoit.leulliette@gmail.com>
+ * @copyright  Copyright (c) 2012 Benoît Leulliette <benoit.leulliette@gmail.com>
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
@@ -74,8 +74,12 @@ class BL_CustomGrid_Block_Widget_Grid_Form_Attribute_Product
             'gallery'  => Mage::getConfig()->getBlockClassName('adminhtml/catalog_product_helper_form_gallery'),
             'image'    => Mage::getConfig()->getBlockClassName('adminhtml/catalog_product_helper_form_image'),
             'boolean'  => Mage::getConfig()->getBlockClassName('adminhtml/catalog_product_helper_form_boolean'),
-            'textarea' => Mage::getConfig()->getBlockClassName('customgrid/widget_grid_form_helper_product_wysiwyg')
+            'textarea' => Mage::getConfig()->getBlockClassName('customgrid/widget_grid_form_helper_product_wysiwyg'),
         );
+        
+        if ($this->helper('customgrid')->isMageVersionGreaterThan(1, 6)) {
+            $result['weight'] = Mage::getConfig()->getBlockClassName('adminhtml/catalog_product_helper_form_weight');
+        }
         
         $response = new Varien_Object();
         $response->setTypes(array());
